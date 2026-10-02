@@ -107,6 +107,10 @@ export default function Room3D({
     }>
   >([]);
   const renderRef = useRef<(() => void) | null>(null);
+  const fixtureSceneRef = useRef<{
+    group: THREE.Group;
+    railMat: THREE.MeshStandardMaterial;
+  } | null>(null);
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !catalog) return;
@@ -118,7 +122,7 @@ export default function Room3D({
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -426,62 +430,9 @@ export default function Room3D({
       project.trackZ,
       railMat,
     );
-    const color = lightColor(project.kelvin),
-      power = project.brightness / 100;
-    lampsRef.current = [];
-    for (const f of project.fixtures) {
-      const spec = catalog.fixtures.find((x) => x.id === f.type);
-      if (!spec) continue;
-      const x = project.trackX + (f.t - 0.5) * project.trackL;
-      const mesh =
-        f.type === "line"
-          ? new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.07, 0.095), railMat)
-          : new THREE.Mesh(
-              new THREE.CylinderGeometry(
-                f.type === "wide" ? 0.082 : 0.065,
-                f.type === "wide" ? 0.092 : 0.075,
-                0.15,
-                20,
-              ),
-              railMat,
-            );
-      mesh.position.set(
-        x,
-        project.roomH - (f.type === "line" ? 0.11 : 0.16),
-        project.trackZ,
-      );
-      mesh.castShadow = true;
-      scene.add(mesh);
-      const lens = new THREE.Mesh(
-        new THREE.CircleGeometry(f.type === "line" ? 0.16 : 0.057, 20),
-        new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
-      );
-      lens.rotation.x = Math.PI / 2;
-      lens.position.set(
-        x,
-        project.roomH - (f.type === "line" ? 0.155 : 0.24),
-        project.trackZ,
-      );
-      scene.add(lens);
-      const spot = new THREE.SpotLight(
-        color,
-        power * (f.type === "line" ? 27 : 40),
-        project.roomH * 1.8,
-        THREE.MathUtils.degToRad(spec.beam / 2),
-        0.75,
-        1,
-      );
-      spot.position.set(x, project.roomH - 0.22, project.trackZ);
-      spot.target.position.set(x, 0, project.trackZ);
-      spot.castShadow = true;
-      spot.shadow.mapSize.set(512, 512);
-      scene.add(spot, spot.target);
-      lampsRef.current.push({
-        spot,
-        lens,
-        baseIntensity: f.type === "line" ? 27 : 40,
-      });
-    }
+    const fixtureGroup = new THREE.Group();
+    scene.add(fixtureGroup);
+    fixtureSceneRef.current = { group: fixtureGroup, railMat };
     let dragging = false,
       lastX = 0,
       lastY = 0;
@@ -533,6 +484,7 @@ export default function Room3D({
           : [node.material];
         materials.forEach((material: THREE.Material) => material.dispose());
       });
+      fixtureSceneRef.current = null;
       renderRef.current = null;
       lampsRef.current = [];
       renderer.dispose();
@@ -547,7 +499,101 @@ export default function Room3D({
     project.trackL,
     project.mount,
     project.color,
+    catalog,
+  ]);
+  useEffect(() => {
+    const fixtureScene = fixtureSceneRef.current;
+    if (!fixtureScene || !catalog) return;
+    const { group, railMat } = fixtureScene;
+    group.traverse((node) => {
+      if (!(node instanceof THREE.Mesh)) return;
+      node.geometry.dispose();
+      if (node.material !== railMat) {
+        const materials = Array.isArray(node.material)
+          ? node.material
+          : [node.material];
+        materials.forEach((material) => material.dispose());
+      }
+    });
+    group.clear();
+    const color = lightColor(project.kelvin),
+      power = project.brightness / 100;
+    lampsRef.current = [];
+    const lightCount = Math.min(4, project.fixtures.length);
+    const illuminated = new Set(
+      Array.from({ length: lightCount }, (_, index) =>
+        lightCount === 1
+          ? 0
+          : Math.round(
+              (index * (project.fixtures.length - 1)) / (lightCount - 1),
+            ),
+      ),
+    );
+    for (const [index, f] of project.fixtures.entries()) {
+      const spec = catalog.fixtures.find((x) => x.id === f.type);
+      if (!spec) continue;
+      const x = project.trackX + (f.t - 0.5) * project.trackL;
+      const mesh =
+        f.type === "line"
+          ? new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.07, 0.095), railMat)
+          : new THREE.Mesh(
+              new THREE.CylinderGeometry(
+                f.type === "wide" ? 0.082 : 0.065,
+                f.type === "wide" ? 0.092 : 0.075,
+                0.15,
+                20,
+              ),
+              railMat,
+            );
+      mesh.position.set(
+        x,
+        project.roomH - (f.type === "line" ? 0.11 : 0.16),
+        project.trackZ,
+      );
+      mesh.castShadow = true;
+      group.add(mesh);
+      const lens = new THREE.Mesh(
+        new THREE.CircleGeometry(f.type === "line" ? 0.16 : 0.057, 20),
+        new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+      );
+      lens.rotation.x = Math.PI / 2;
+      lens.position.set(
+        x,
+        project.roomH - (f.type === "line" ? 0.155 : 0.24),
+        project.trackZ,
+      );
+      group.add(lens);
+      // Representative spotlights light the room; every fixture still has a visible lens.
+      if (!illuminated.has(index)) continue;
+      const spot = new THREE.SpotLight(
+        color,
+        power * (f.type === "line" ? 27 : 40),
+        project.roomH * 1.8,
+        THREE.MathUtils.degToRad(spec.beam / 2),
+        0.75,
+        1,
+      );
+      spot.position.set(x, project.roomH - 0.22, project.trackZ);
+      spot.target.position.set(x, 0, project.trackZ);
+      spot.castShadow = false;
+      group.add(spot, spot.target);
+      lampsRef.current.push({
+        spot,
+        lens,
+        baseIntensity: f.type === "line" ? 27 : 40,
+      });
+    }
+    renderRef.current?.();
+  }, [
     project.fixtures,
+    project.roomW,
+    project.roomD,
+    project.roomH,
+    project.trackX,
+    project.trackZ,
+    project.trackL,
+    project.mount,
+    project.color,
     catalog,
   ]);
   useEffect(() => {

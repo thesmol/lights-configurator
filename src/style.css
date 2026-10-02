@@ -473,7 +473,8 @@ input[type="range"] {
   padding: 30px 22px;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 0;
   border-left: 1px solid #e5e9e2;
 }
 .summary h2 {
@@ -481,6 +482,7 @@ input[type="range"] {
   margin: 17px 0 5px;
 }
 .summary-visual {
+  flex: none;
   height: 100px;
   background: #edf0ea;
   border-radius: 6px;
@@ -525,6 +527,9 @@ input[type="range"] {
   font-weight: 500;
 }
 .summary-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   margin-bottom: 24px;
 }
 .spec-row {
