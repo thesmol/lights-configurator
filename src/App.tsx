@@ -137,29 +137,35 @@ export default function App() {
       return;
     }
     const controller = new AbortController();
-    setQuote(null);
-    fetch("/api/quote", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: quoteInput,
-      signal: controller.signal,
-    })
-      .then(async (r) => {
-        const body = await r.json();
-        if (!r.ok) throw Error(body.error || "Ошибка расчёта");
-        return body;
+    const timer = window.setTimeout(() => {
+      fetch("/api/quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: quoteInput,
+        signal: controller.signal,
       })
-      .then((data) => {
-        setQuote(data);
-        setError("");
-      })
-      .catch((e) => {
-        if (!(e instanceof Error && e.name === "AbortError")) {
-          setError(errorMessage(e));
-          setQuote(null);
-        }
-      });
-    return () => controller.abort();
+        .then(async (r) => {
+          const body = await r.json();
+          if (!r.ok) throw Error(body.error || "Ошибка расчёта");
+          return body as Quote;
+        })
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          setQuote(data);
+          setError("");
+        })
+        .catch((e) => {
+          if (controller.signal.aborted) return;
+          if (!(e instanceof Error && e.name === "AbortError")) {
+            setError(errorMessage(e));
+            setQuote(null);
+          }
+        });
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [catalog, quoteInput]);
   const change = (patch: Partial<Project>) =>
     setProject((p) => ({ ...p, ...patch }));
@@ -591,13 +597,7 @@ export default function App() {
             {project.view === "3d" ? (
               <Room3D project={project} catalog={catalog} />
             ) : (
-              catalog && (
-                <Plan
-                  project={project}
-                  catalog={catalog}
-                  setProject={setProject}
-                />
-              )
+              catalog && <Plan project={project} setProject={setProject} />
             )}
             <div className="scene-badge absolute top-[23px] left-[25px] z-2 rounded bg-[#fffefaed] px-3 py-[9px] text-[9px] font-extrabold tracking-[.1em] text-[#526453] shadow-[0_2px_12px_#34412f16] max-[650px]:top-3 max-[650px]:left-3 max-[650px]:text-[8px]">
               <span className="live-dot mr-[7px] inline-block size-[6px] rounded-full bg-[#89b163]" />{" "}
@@ -653,14 +653,6 @@ export default function App() {
               ? "Демоданные · расчёт в браузере"
               : "Комплектация рассчитывается сервером"}
           </p>
-          <div className="summary-visual relative my-[24px] flex h-[100px] shrink-0 items-center rounded-md bg-[#edf0ea]">
-            <div className="summary-line absolute right-[12%] left-[12%] h-2 rounded bg-[#28302a]" />
-            {project.fixtures.map((f) => (
-              <span key={f.id} style={{ left: `${12 + f.t * 76}%` }}>
-                {product(f.type)?.icon || "◉"}
-              </span>
-            ))}
-          </div>
           <div className="summary-heading flex justify-between border-b border-[#e9ede6] pb-3 text-[10px] font-extrabold tracking-[.1em]">
             СПЕЦИФИКАЦИЯ{" "}
             <span>

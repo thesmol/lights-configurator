@@ -6,19 +6,18 @@ import {
   type PointerEvent,
   type SetStateAction,
 } from "react";
-import type { Catalog, Project } from "../shared";
+import type { Project } from "../shared";
 import { moveFixture } from "./placement";
 type Drag =
   | { kind: "fixture"; id: number }
   | { kind: "rail"; startX: number; startY: number; x: number; z: number };
 interface PlanProps {
   project: Project;
-  catalog: Catalog;
   setProject: Dispatch<SetStateAction<Project>>;
 }
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n));
-export default function Plan({ project, catalog, setProject }: PlanProps) {
+export default function Plan({ project, setProject }: PlanProps) {
   const host = useRef<HTMLDivElement>(null),
     drag = useRef<Drag | null>(null);
   const [size, setSize] = useState({ width: 700, height: 500 });
@@ -168,24 +167,67 @@ export default function Plan({ project, catalog, setProject }: PlanProps) {
           strokeLinecap="round"
           pointerEvents="none"
         />
-        {project.fixtures.map((f) => (
-          <g
-            key={f.id}
-            className={`plan-fixture ${project.selected === f.id ? "selected" : ""}`}
-            data-id={f.id}
-            transform={`translate(${railX + (f.t - 0.5) * project.trackL * scale},${railY})`}
-          >
-            <circle
-              r="10"
-              fill="#fff"
-              stroke={project.selected === f.id ? "#7e9f58" : "#222a25"}
-              strokeWidth="3"
-            />
-            <text textAnchor="middle" dominantBaseline="central" fontSize="11">
-              {catalog.fixtures.find((p) => p.id === f.type)?.icon}
-            </text>
-          </g>
-        ))}
+        {project.fixtures.map((f) => {
+          const selected = project.selected === f.id;
+          const body = project.color === "black" ? "#26302c" : "#dce1db";
+          const edge = project.color === "black" ? "#111b17" : "#8d9990";
+          const width =
+            (f.type === "line" ? 0.38 : f.type === "wide" ? 0.2 : 0.16) * scale;
+          const radius = width / 2;
+          return (
+            <g
+              key={f.id}
+              className="plan-fixture"
+              data-id={f.id}
+              transform={`translate(${railX + (f.t - 0.5) * project.trackL * scale},${railY})`}
+            >
+              {f.type === "line" ? (
+                <>
+                  <rect
+                    x={-width / 2}
+                    y={-0.05 * scale}
+                    width={width}
+                    height={0.1 * scale}
+                    rx="2"
+                    fill={body}
+                    stroke={selected ? "#7e9f58" : edge}
+                    strokeWidth={selected ? 3 : 1.5}
+                  />
+                  <rect
+                    x={-width * 0.42}
+                    y={-0.022 * scale}
+                    width={width * 0.84}
+                    height={0.044 * scale}
+                    rx="1"
+                    fill="#fff6dc"
+                    pointerEvents="none"
+                  />
+                </>
+              ) : (
+                <>
+                  <circle
+                    r={radius}
+                    fill={body}
+                    stroke={selected ? "#7e9f58" : edge}
+                    strokeWidth={selected ? 3 : 1.5}
+                  />
+                  <circle
+                    r={radius * (f.type === "wide" ? 0.75 : 0.64)}
+                    fill="#e7e8df"
+                    stroke="#9da99e"
+                    strokeWidth="1"
+                    pointerEvents="none"
+                  />
+                  <circle
+                    r={radius * (f.type === "wide" ? 0.5 : 0.33)}
+                    fill={f.type === "wide" ? "#f9f3df" : "#acb8ad"}
+                    pointerEvents="none"
+                  />
+                </>
+              )}
+            </g>
+          );
+        })}
       </svg>
     </div>
   );

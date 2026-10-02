@@ -101,6 +101,7 @@ export default function Room3D({
   const fixtureSceneRef = useRef<{
     group: THREE.Group;
     railMat: THREE.MeshStandardMaterial;
+    rail: THREE.Mesh;
   } | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -396,7 +397,7 @@ export default function Room3D({
       roughness: 0.38,
     });
     const rail = box(
-      project.trackL,
+      1,
       project.mount === "surface" ? 0.07 : 0.025,
       0.075,
       project.trackX,
@@ -404,10 +405,11 @@ export default function Room3D({
       project.trackZ,
       railMat,
     );
+    rail.scale.x = project.trackL;
     rail.castShadow = false;
     const fixtureGroup = new THREE.Group();
     scene.add(fixtureGroup);
-    fixtureSceneRef.current = { group: fixtureGroup, railMat };
+    fixtureSceneRef.current = { group: fixtureGroup, railMat, rail };
     let dragging = false,
       lastX = 0,
       lastY = 0;
@@ -469,11 +471,25 @@ export default function Room3D({
     project.roomW,
     project.roomD,
     project.roomH,
-    project.trackX,
-    project.trackZ,
-    project.trackL,
     project.mount,
     project.color,
+    catalog,
+  ]);
+  useEffect(() => {
+    const rail = fixtureSceneRef.current?.rail;
+    if (!rail) return;
+    rail.scale.x = project.trackL;
+    rail.position.x = project.trackX;
+    rail.position.z = project.trackZ;
+  }, [
+    project.roomW,
+    project.roomD,
+    project.roomH,
+    project.mount,
+    project.color,
+    project.trackL,
+    project.trackX,
+    project.trackZ,
     catalog,
   ]);
   useEffect(() => {
