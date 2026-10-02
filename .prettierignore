@@ -1,0 +1,6 @@
+node_modules/
+dist/
+build-server/
+.vite/
+*.png
+.belief_map*

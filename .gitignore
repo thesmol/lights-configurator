@@ -8,3 +8,4 @@ debug-*.png
 preview*.png
 .DS_Store
 .vite/
+build-server/

@@ -24,9 +24,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run format:check
+      - run: npm test
       - run: npm run build
         env:
-          VITE_PAGES_DEMO: 'true'
+          VITE_PAGES_DEMO: "true"
           GITHUB_PAGES_REPO: ${{ github.event.repository.name }}
       - uses: actions/upload-pages-artifact@v4
         with:
