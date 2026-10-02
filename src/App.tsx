@@ -533,7 +533,6 @@ export default function App() {
                           setProject((current) =>
                             addFixture(current, item.id, catalog),
                           );
-                          setChoosingFixture(false);
                         }}
                         disabledReason={(item) =>
                           cannotAddFixture(
@@ -544,6 +543,18 @@ export default function App() {
                           )
                         }
                       />
+                      <div className="mt-5 flex items-center justify-between gap-4 border-t border-[#e8ece6] pt-4">
+                        <p role="status" className="text-sm text-[#74816e]">
+                          На треке: {activeTrack?.fixtures.length ?? 0}{" "}
+                          светильников
+                        </p>
+                        <button
+                          onClick={() => setChoosingFixture(false)}
+                          className="rounded-md bg-[#344c2d] px-5 py-2 text-sm font-bold text-white hover:bg-[#435f3b]"
+                        >
+                          Готово
+                        </button>
+                      </div>
                     </CatalogDialog>
                   )}
                 </>

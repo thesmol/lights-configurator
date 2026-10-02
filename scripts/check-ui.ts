@@ -79,6 +79,15 @@ try {
   await page
     .getByRole("button", { name: "Добавить LINE 48", exact: true })
     .click();
+  assert.equal(await page.getByRole("dialog").isVisible(), true);
+  await page
+    .getByRole("button", { name: "Добавить LINE 48", exact: true })
+    .click();
+  await page
+    .getByRole("status")
+    .filter({ hasText: "На треке: 5 светильников" })
+    .waitFor();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
   await waitQuote(page);
   const added = await page
     .locator('.plan-fixture[data-fixture-id="4"]')
@@ -119,10 +128,11 @@ try {
   await page
     .getByRole("button", { name: "Добавить SPOT 48", exact: true })
     .click();
+  await page.keyboard.press("Escape");
   await waitQuote(page);
   let current = await state(page);
   assert.equal(current.tracks.length, 2);
-  assert.equal(current.tracks[0].fixtures.length, 4);
+  assert.equal(current.tracks[0].fixtures.length, 5);
   assert.equal(current.tracks[1].fixtures.length, 1);
   assert.equal(current.tracks[1].productId, "recessed");
   const fixture = page.locator('.plan-fixture[data-track-id="2"]').first();
@@ -284,9 +294,8 @@ try {
       (f) => f.type === "fixture-119",
     ),
   );
-  await catalogPage
-    .getByRole("button", { name: "Открыть каталог светильников" })
-    .click();
+  assert.equal(await catalogPage.getByRole("dialog").isVisible(), true);
+  assert.equal(await picker.getByRole("searchbox").inputValue(), "Fixture 119");
   await picker.getByRole("searchbox").fill("");
   await picker.locator('.catalog[aria-busy="false"]').waitFor();
   await catalogPage.screenshot({ path: "/tmp/lights-large-catalog.png" });
