@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import Room3D from "./Room3D";
 import Plan from "./Plan";
+import FixtureImage from "./FixtureImage";
 import {
   catalog as demoCatalog,
   quote as demoQuote,
@@ -505,8 +506,8 @@ export default function App() {
                         project.trackL + 1e-8
                     }
                   >
-                    <span className="product-symbol grid size-9 shrink-0 place-items-center rounded bg-[#eef1ea] text-[19px] text-[#344338]">
-                      {item.icon}
+                    <span className="product-symbol grid h-12 w-[68px] shrink-0 place-items-center rounded bg-[#eef1ea]">
+                      <FixtureImage type={item.id} className="h-11 w-[62px]" />
                     </span>
                     <span className="product-copy grid flex-1 gap-[3px]">
                       <strong>{item.name}</strong>
@@ -689,7 +690,10 @@ export default function App() {
                   key={`fixture-${fixture.id}`}
                 >
                   <span className="spec-icon grid size-[30px] shrink-0 place-items-center rounded bg-[#edf1e9] text-[#526b51]">
-                    {item?.icon ?? "◉"}
+                    <FixtureImage
+                      type={item?.id ?? fixture.type}
+                      className="h-7 w-7"
+                    />
                   </span>
                   <div>
                     <strong>
