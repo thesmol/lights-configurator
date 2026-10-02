@@ -7,6 +7,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { Catalog, Project } from "../shared";
+import { constrainFixturePosition } from "./placement";
 type Drag =
   | { kind: "fixture"; id: number }
   | { kind: "rail"; startX: number; startY: number; x: number; z: number };
@@ -60,6 +61,7 @@ export default function Plan({ project, catalog, setProject }: PlanProps) {
     const fixture = target?.closest<SVGGElement>(".plan-fixture"),
       rail = target?.closest(".rail-hit");
     if (!fixture && !rail) return;
+    e.preventDefault();
     drag.current = fixture
       ? { kind: "fixture", id: Number(fixture.dataset.id) }
       : {
@@ -78,14 +80,26 @@ export default function Plan({ project, catalog, setProject }: PlanProps) {
     const bounds = host.current?.getBoundingClientRect();
     if (!active || !bounds) return;
     if (active.kind === "fixture") {
-      const t = clamp(
+      const desired = clamp(
         (e.clientX - bounds.left - railX) / (project.trackL * scale) + 0.5,
         0.03,
         0.97,
       );
       setProject((p) => ({
         ...p,
-        fixtures: p.fixtures.map((f) => (f.id === active.id ? { ...f, t } : f)),
+        fixtures: p.fixtures.map((f) =>
+          f.id === active.id
+            ? {
+                ...f,
+                t: constrainFixturePosition(
+                  p.fixtures,
+                  p.trackL,
+                  active.id,
+                  desired,
+                ),
+              }
+            : f,
+        ),
       }));
     } else {
       const nextX = clamp(
@@ -172,12 +186,12 @@ export default function Plan({ project, catalog, setProject }: PlanProps) {
             transform={`translate(${railX + (f.t - 0.5) * project.trackL * scale},${railY})`}
           >
             <circle
-              r="15"
+              r="10"
               fill="#fff"
               stroke={project.selected === f.id ? "#7e9f58" : "#222a25"}
               strokeWidth="3"
             />
-            <text textAnchor="middle" dominantBaseline="central" fontSize="15">
+            <text textAnchor="middle" dominantBaseline="central" fontSize="11">
               {catalog.fixtures.find((p) => p.id === f.type)?.icon}
             </text>
           </g>

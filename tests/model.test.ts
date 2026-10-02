@@ -46,6 +46,6 @@ test("saved project is bounded before it reaches the 3D scene", () => {
   assert.equal(project.trackL, 1.6);
   assert.equal(project.brightness, 10);
   assert.equal(project.fixtures.length, 1);
-  assert.equal(project.fixtures[0].t, 0.97);
+  assert.equal(project.fixtures[0].t, 0.9375);
   assert.equal(project.selected, 1);
 });

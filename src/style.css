@@ -525,8 +525,7 @@ input[type="range"] {
   font-weight: 500;
 }
 .summary-list {
-  max-height: 250px;
-  overflow: auto;
+  margin-bottom: 24px;
 }
 .spec-row {
   display: flex;
@@ -565,40 +564,19 @@ input[type="range"] {
 .spec-row b {
   font-size: 11px;
 }
-.selected-tools {
-  margin-top: 25px;
-}
-.selected-title {
-  font-size: 10px;
-  font-weight: 800;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 9px;
-}
-.selected-title span {
-  color: #91a28f;
-}
-.selected-row {
-  display: flex;
-  gap: 7px;
-}
-.selected-row select {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid #dce4d8;
-  border-radius: 4px;
-  background: #fff;
-  padding: 8px;
-  font-size: 11px;
-  color: #344737;
-}
-.selected-row button {
-  width: 34px;
+.spec-remove {
+  flex: none;
+  width: 28px;
+  height: 28px;
   border: 1px solid #e1e8de;
   background: white;
   border-radius: 4px;
   font-size: 18px;
   color: #9aa99b;
+}
+.spec-remove:hover {
+  color: #a24a42;
+  border-color: #d6aaa5;
 }
 .empty-note {
   font-size: 11px;
@@ -660,6 +638,12 @@ input[type="range"] {
 }
 .plan-fixture {
   cursor: grab;
+}
+#plan-view {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 .rail-hit {
   cursor: move;

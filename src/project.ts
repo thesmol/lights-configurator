@@ -1,4 +1,5 @@
 import { catalog, type FixturePlacement, type Project } from "../shared";
+import { minimumTrackLength, placeFixtures } from "./placement";
 
 export const DEFAULT_PROJECT: Project = {
   roomW: 5.2,
@@ -50,6 +51,8 @@ export function normalizeProject(value: unknown): Project | null {
     });
     if (fixture.id === raw.selected) selected = id;
   }
+  while (minimumTrackLength(fixtures) > trackL + 1e-8) fixtures.pop();
+  const placed = placeFixtures(fixtures, trackL);
   return {
     roomW,
     roomD,
@@ -66,8 +69,10 @@ export function normalizeProject(value: unknown): Project | null {
     color: raw.color === "white" ? "white" : "black",
     kelvin: Math.round(number(raw.kelvin, 3000, 2700, 5000) / 100) * 100,
     brightness: Math.round(number(raw.brightness, 85, 10, 100) / 5) * 5,
-    fixtures,
-    selected: selected ?? fixtures[0]?.id ?? null,
+    fixtures: placed,
+    selected: placed.some((fixture) => fixture.id === selected)
+      ? selected
+      : (placed[0]?.id ?? null),
     view: raw.view === "plan" ? "plan" : "3d",
   };
 }

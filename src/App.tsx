@@ -10,6 +10,11 @@ import {
   type Quote,
 } from "../shared";
 import { DEFAULT_PROJECT, normalizeProject, readSavedProject } from "./project";
+import {
+  findFreePosition,
+  minimumTrackLength,
+  placeFixtures,
+} from "./placement";
 
 const pagesDemo = import.meta.env.VITE_PAGES_DEMO === "true";
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
@@ -158,8 +163,15 @@ export default function App() {
     setProject((p) => ({ ...p, ...patch }));
   const setRoom = (key: "roomW" | "roomD" | "roomH", value: number) =>
     setProject((p) => {
-      const next = { ...p, [key]: value };
+      const next = {
+        ...p,
+        [key]:
+          key === "roomW"
+            ? Math.max(value, minimumTrackLength(p.fixtures) + 0.4)
+            : value,
+      };
       next.trackL = clamp(next.trackL, 0.8, Math.max(0.8, next.roomW - 0.4));
+      next.fixtures = placeFixtures(next.fixtures, next.trackL);
       next.trackX = clamp(
         next.trackX,
         -(next.roomW - next.trackL) / 2 + 0.2,
@@ -176,27 +188,25 @@ export default function App() {
     setProject((p) => {
       if (p.fixtures.length >= 40) return p;
       const id = Math.max(0, ...p.fixtures.map((f) => f.id)) + 1;
-      const slots = [0.12, 0.28, 0.43, 0.57, 0.72, 0.88];
-      const t =
-        slots.find((v) => p.fixtures.every((f) => Math.abs(f.t - v) > 0.1)) ??
-        0.5;
-      return { ...p, selected: id, fixtures: [...p.fixtures, { id, type, t }] };
+      const fixture = { id, type, t: 0.5 };
+      if (minimumTrackLength([...p.fixtures, fixture]) > p.trackL + 1e-8)
+        return p;
+      const t = findFreePosition(p.fixtures, p.trackL, type);
+      const fixtures =
+        t === null
+          ? placeFixtures([...p.fixtures, fixture], p.trackL)
+          : [...p.fixtures, { ...fixture, t }];
+      return { ...p, selected: id, fixtures };
     });
-  const updateSelected = (type: FixtureType) =>
-    setProject((p) => ({
-      ...p,
-      fixtures: p.fixtures.map((f) =>
-        f.id === p.selected ? { ...f, type } : f,
-      ),
-    }));
-  const removeSelected = () =>
+  const removeFixture = (id: number) =>
     setProject((p) => {
-      const fixtures = p.fixtures.filter((f) => f.id !== p.selected);
-      return { ...p, fixtures, selected: fixtures[0]?.id ?? null };
+      const fixtures = p.fixtures.filter((f) => f.id !== id);
+      return {
+        ...p,
+        fixtures,
+        selected: p.selected === id ? (fixtures[0]?.id ?? null) : p.selected,
+      };
     });
-  const selected =
-    project.fixtures.find((f) => f.id === project.selected) ??
-    project.fixtures[0];
   const product = (id: string) => catalog?.fixtures.find((x) => x.id === id);
   const flash = (message: string) => {
     setToast(message);
@@ -390,19 +400,28 @@ export default function App() {
                   id="trackL"
                   type="range"
                   min="0.8"
+                  aria-label="Длина трека"
                   max={Math.max(0.8, project.roomW - 0.4)}
                   step="0.1"
                   value={project.trackL}
                   onChange={(e) =>
-                    setProject((p) => ({
-                      ...p,
-                      trackL: Number(e.target.value),
-                      trackX: clamp(
-                        p.trackX,
-                        -(p.roomW - Number(e.target.value)) / 2 + 0.2,
-                        (p.roomW - Number(e.target.value)) / 2 - 0.2,
-                      ),
-                    }))
+                    setProject((p) => {
+                      const trackL = Math.max(
+                        Number(e.target.value),
+                        Math.ceil(minimumTrackLength(p.fixtures) * 10) / 10,
+                        0.8,
+                      );
+                      return {
+                        ...p,
+                        trackL,
+                        fixtures: placeFixtures(p.fixtures, trackL),
+                        trackX: clamp(
+                          p.trackX,
+                          -(p.roomW - trackL) / 2 + 0.2,
+                          (p.roomW - trackL) / 2 - 0.2,
+                        ),
+                      };
+                    })
                   }
                 />
                 <div className="range-ends">
@@ -426,7 +445,14 @@ export default function App() {
                     key={item.id}
                     className="product-card"
                     onClick={() => addFixture(item.id)}
-                    disabled={project.fixtures.length >= 40}
+                    disabled={
+                      project.fixtures.length >= 40 ||
+                      minimumTrackLength([
+                        ...project.fixtures,
+                        { id: -1, type: item.id, t: 0.5 },
+                      ]) >
+                        project.trackL + 1e-8
+                    }
                   >
                     <span className="product-symbol">{item.icon}</span>
                     <span className="product-copy">
@@ -576,54 +602,54 @@ export default function App() {
             ))}
           </div>
           <div className="summary-heading">
-            СПЕЦИФИКАЦИЯ <span>{quote?.items.length ?? "—"} поз.</span>
+            СПЕЦИФИКАЦИЯ{" "}
+            <span>
+              {quote
+                ? quote.items.filter((item) => !product(item.id)).length +
+                  project.fixtures.length
+                : "—"}{" "}
+              поз.
+            </span>
           </div>
           <div className="summary-list">
-            {quote?.items.map((item) => (
-              <div className="spec-row" key={item.id}>
-                <span className="spec-icon">
-                  {product(item.id)?.icon || (item.id === "power" ? "⌁" : "━")}
-                </span>
-                <div>
-                  <strong>{item.name}</strong>
-                  <small>{item.description}</small>
-                </div>
-                <b>×{item.quantity}</b>
-              </div>
-            ))}
-          </div>
-          <div className="selected-tools">
-            {selected && catalog ? (
-              <>
-                <div className="selected-title">
-                  Выбранный светильник{" "}
-                  <span>
-                    #
-                    {project.fixtures.findIndex((f) => f.id === selected.id) +
-                      1}
+            {quote?.items
+              .filter((item) => !product(item.id))
+              .map((item) => (
+                <div className="spec-row" key={item.id}>
+                  <span className="spec-icon">
+                    {item.id === "power" ? "⌁" : "━"}
                   </span>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>{item.description}</small>
+                  </div>
+                  <b>×{item.quantity}</b>
                 </div>
-                <div className="selected-row">
-                  <select
-                    value={selected.type}
-                    onChange={(e) =>
-                      updateSelected(e.target.value as FixtureType)
-                    }
+              ))}
+            {project.fixtures.map((fixture, index) => {
+              const item = product(fixture.type);
+              return (
+                <div className="spec-row" key={`fixture-${fixture.id}`}>
+                  <span className="spec-icon">{item?.icon ?? "◉"}</span>
+                  <div>
+                    <strong>
+                      {item?.name ?? fixture.type} #{index + 1}
+                    </strong>
+                    <small>
+                      {item?.type} · {item?.watts} Вт
+                    </small>
+                  </div>
+                  <button
+                    className="spec-remove"
+                    type="button"
+                    aria-label={`Удалить ${item?.name ?? "светильник"} №${index + 1}`}
+                    onClick={() => removeFixture(fixture.id)}
                   >
-                    {catalog.fixtures.map((p) => (
-                      <option value={p.id} key={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button onClick={removeSelected} title="Удалить светильник">
                     ×
                   </button>
                 </div>
-              </>
-            ) : (
-              <p className="empty-note">Добавьте светильник слева.</p>
-            )}
+              );
+            })}
           </div>
           <div className="summary-total">
             <span>Предварительная стоимость</span>
