@@ -125,9 +125,17 @@ export default function Room3D({
       orbitRef.current.radius = Math.max(project.roomW, project.roomD) * 1.95;
     const aim = () => {
       const { theta, phi } = orbitRef.current;
-      const radius =
+      const requestedRadius =
         orbitRef.current.radius ??
         Math.max(project.roomW, project.roomD) * 1.95;
+      // When looking upward, move the camera into the room before it crosses the floor.
+      const radius =
+        phi > Math.PI / 2
+          ? Math.min(
+              requestedRadius,
+              (project.roomH * 0.45 - 0.45) / -Math.cos(phi),
+            )
+          : requestedRadius;
       camera.position.set(
         radius * Math.sin(theta) * Math.sin(phi),
         project.roomH * 0.45 + radius * Math.cos(phi),
@@ -188,6 +196,21 @@ export default function Room3D({
     back.position.set(0, project.roomH / 2, -project.roomD / 2);
     back.receiveShadow = true;
     scene.add(back);
+    // A downward facing single-sided plane shows the ceiling from inside the
+    // room, while a top-down camera sees straight through its back face.
+    const ceiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(project.roomW, project.roomD),
+      new THREE.MeshStandardMaterial({
+        color: "#e2e4de",
+        emissive: "#b4b8af",
+        emissiveIntensity: 0.35,
+        roughness: 0.94,
+        side: THREE.FrontSide,
+      }),
+    );
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = project.roomH + 0.01;
+    scene.add(ceiling);
     const left = new THREE.Mesh(
       new THREE.PlaneGeometry(project.roomD, project.roomH),
       wallMat,
@@ -424,8 +447,8 @@ export default function Room3D({
       orbitRef.current.theta -= (e.clientX - lastX) * 0.008;
       orbitRef.current.phi = clamp(
         orbitRef.current.phi + (e.clientY - lastY) * 0.007,
-        0.3,
-        1.5,
+        0.12,
+        2.25,
       );
       lastX = e.clientX;
       lastY = e.clientY;
