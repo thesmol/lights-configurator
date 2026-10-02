@@ -12,11 +12,6 @@
 body {
   margin: 0;
 }
-button,
-input,
-select {
-  font: inherit;
-}
 button:not(:disabled) {
   cursor: pointer;
 }

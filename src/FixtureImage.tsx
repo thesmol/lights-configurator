@@ -1,19 +1,38 @@
+import { useId } from "react";
+import type { FixtureShape } from "../shared";
 type FixtureImageProps = {
-  type: string;
+  shape: FixtureShape;
+  imageUrl?: string;
+  name?: string;
   className?: string;
 };
 
 /** Small product illustrations used wherever a fixture is listed. */
-export default function FixtureImage({ type, className }: FixtureImageProps) {
+export default function FixtureImage({
+  shape: type,
+  imageUrl,
+  name,
+  className,
+}: FixtureImageProps) {
+  const gradientId = useId();
+  if (imageUrl)
+    return (
+      <img
+        src={imageUrl}
+        alt={name ?? "Светильник"}
+        className={`${className ?? ""} object-contain`}
+        loading="lazy"
+      />
+    );
   return (
     <svg
       className={className}
       viewBox="0 0 72 52"
       role="img"
-      aria-label={`Вид светильника ${type}`}
+      aria-label={name ?? `Вид светильника ${type}`}
     >
       <defs>
-        <linearGradient id={`body-${type}`} x2="0" y2="1">
+        <linearGradient id={gradientId} x2="0" y2="1">
           <stop stopColor="#707a73" />
           <stop offset="1" stopColor="#26332c" />
         </linearGradient>
@@ -28,7 +47,7 @@ export default function FixtureImage({ type, className }: FixtureImageProps) {
             width="60"
             height="24"
             rx="4"
-            fill={`url(#body-${type})`}
+            fill={`url(#${gradientId})`}
           />
           <rect x="10" y="35" width="52" height="4" rx="2" fill="#e5d9b5" />
         </>
@@ -37,7 +56,7 @@ export default function FixtureImage({ type, className }: FixtureImageProps) {
           <rect x="28" y="10" width="16" height="5" rx="2" fill="#38453d" />
           <path
             d="M22 16 Q36 12 50 16 L47 37 Q36 42 25 37 Z"
-            fill={`url(#body-${type})`}
+            fill={`url(#${gradientId})`}
           />
           <ellipse cx="36" cy="38" rx="11" ry="4" fill="#c4c9b9" />
           <ellipse cx="36" cy="38" rx="8" ry="2.5" fill="#f5e9c7" />
@@ -47,7 +66,7 @@ export default function FixtureImage({ type, className }: FixtureImageProps) {
           <rect x="31" y="10" width="10" height="6" rx="2" fill="#38453d" />
           <path
             d="M27 16 L45 16 L47 38 Q36 43 25 38 Z"
-            fill={`url(#body-${type})`}
+            fill={`url(#${gradientId})`}
           />
           <ellipse cx="36" cy="38" rx="11" ry="4" fill="#151f19" />
           <ellipse cx="36" cy="38" rx="6" ry="2.5" fill="#e1dfcb" />

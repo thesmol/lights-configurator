@@ -6,33 +6,53 @@ import {
   type PointerEvent,
   type SetStateAction,
 } from "react";
-import type { Project } from "../shared";
-import { moveFixture } from "./placement";
+import type { Catalog, Project } from "../shared";
+import {
+  fixturePoint,
+  trackBounds,
+  trackSegments,
+  usableLength,
+} from "../domain/trackGeometry";
+import { tracksOverlap } from "./projectActions";
+import FixtureGlyph from "./FixtureGlyph";
+import { fixtureWidth, findFreePosition } from "./placement";
+
 type Drag =
-  | { kind: "fixture"; id: number }
-  | { kind: "rail"; startX: number; startY: number; x: number; z: number };
-interface PlanProps {
-  project: Project;
-  setProject: Dispatch<SetStateAction<Project>>;
-}
+  | { kind: "fixture"; trackId: number; id: number }
+  | {
+      kind: "rail";
+      trackId: number;
+      startX: number;
+      startY: number;
+      x: number;
+      z: number;
+    };
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n));
-export default function Plan({ project, setProject }: PlanProps) {
-  const host = useRef<HTMLDivElement>(null),
-    drag = useRef<Drag | null>(null);
+export default function Plan({
+  project,
+  catalog,
+  setProject,
+}: {
+  project: Project;
+  catalog: Catalog;
+  setProject: Dispatch<SetStateAction<Project>>;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const drag = useRef<Drag | null>(null);
   const [size, setSize] = useState({ width: 700, height: 500 });
   useEffect(() => {
-    const observer = new ResizeObserver(() => {
-      const r = host.current?.getBoundingClientRect();
-      if (r?.width && r?.height)
-        setSize((old) =>
-          old.width === r.width && old.height === r.height
-            ? old
-            : { width: r.width, height: r.height },
-        );
-    });
     const element = host.current;
     if (!element) return;
+    const observer = new ResizeObserver(() => {
+      const { width, height } = element.getBoundingClientRect();
+      if (width && height)
+        setSize((old) =>
+          old.width === width && old.height === height
+            ? old
+            : { width, height },
+        );
+    });
     observer.observe(element);
     const stop = () => {
       drag.current = null;
@@ -49,59 +69,131 @@ export default function Plan({ project, setProject }: PlanProps) {
     (width - pad * 2) / project.roomW,
     (height - pad * 2) / project.roomD,
   );
-  const w = project.roomW * scale,
-    d = project.roomD * scale,
-    x = (width - w) / 2,
-    y = (height - d) / 2;
-  const railX = x + w / 2 + project.trackX * scale,
-    railY = y + d / 2 + project.trackZ * scale;
-  const start = (e: PointerEvent<SVGSVGElement>) => {
-    const target = e.target instanceof Element ? e.target : null;
-    const fixture = target?.closest<SVGGElement>(".plan-fixture"),
+  const roomW = project.roomW * scale,
+    roomD = project.roomD * scale,
+    roomX = (width - roomW) / 2,
+    roomY = (height - roomD) / 2;
+  const start = (event: PointerEvent<SVGSVGElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const fixture = target?.closest(".plan-fixture"),
       rail = target?.closest(".rail-hit");
-    if (!fixture && !rail) return;
-    e.preventDefault();
-    e.currentTarget.focus();
+    if (!fixture && !rail) {
+      setProject((current) => ({ ...current, selectedFixture: null }));
+      return;
+    }
+    const trackId = Number((fixture ?? rail)?.getAttribute("data-track-id"));
+    const track = project.tracks.find((track) => track.id === trackId);
+    if (!track) return;
+    event.preventDefault();
+    event.currentTarget.focus();
+    const segmentId =
+      (fixture ?? rail)?.getAttribute("data-segment-id") ?? "main";
     drag.current = fixture
-      ? { kind: "fixture", id: Number(fixture.dataset.id) }
+      ? {
+          kind: "fixture",
+          trackId,
+          id: Number(fixture.getAttribute("data-fixture-id")),
+        }
       : {
           kind: "rail",
-          startX: e.clientX,
-          startY: e.clientY,
-          x: project.trackX,
-          z: project.trackZ,
+          trackId,
+          startX: event.clientX,
+          startY: event.clientY,
+          x: track.x,
+          z: track.z,
         };
-    if (fixture)
-      setProject((p) => ({ ...p, selected: Number(fixture.dataset.id) }));
-    e.currentTarget.setPointerCapture(e.pointerId);
+    setProject((current) => ({
+      ...current,
+      activeTrackId: trackId,
+      activeSegmentId: segmentId,
+      selectedFixture: fixture
+        ? { trackId, id: Number(fixture.getAttribute("data-fixture-id")) }
+        : null,
+    }));
+    event.currentTarget.setPointerCapture(event.pointerId);
   };
-  const move = (e: PointerEvent<SVGSVGElement>) => {
-    const active = drag.current;
-    const bounds = host.current?.getBoundingClientRect();
+  const move = (event: PointerEvent<SVGSVGElement>) => {
+    const active = drag.current,
+      bounds = host.current?.getBoundingClientRect();
     if (!active || !bounds) return;
-    if (active.kind === "fixture") {
-      const desired = clamp(
-        (e.clientX - bounds.left - railX) / (project.trackL * scale) + 0.5,
-        0.03,
-        0.97,
-      );
-      setProject((p) => ({
-        ...p,
-        fixtures: moveFixture(p.fixtures, p.trackL, active.id, desired),
-      }));
-    } else {
-      const nextX = clamp(
-        active.x + (e.clientX - active.startX) / scale,
-        -(project.roomW - project.trackL) / 2 + 0.2,
-        (project.roomW - project.trackL) / 2 - 0.2,
-      );
-      const nextZ = clamp(
-        active.z + (e.clientY - active.startY) / scale,
-        -project.roomD / 2 + 0.35,
-        project.roomD / 2 - 0.35,
-      );
-      setProject((p) => ({ ...p, trackX: nextX, trackZ: nextZ }));
-    }
+    const mouseX = (event.clientX - bounds.left - width / 2) / scale,
+      mouseZ = (event.clientY - bounds.top - height / 2) / scale;
+    setProject((current) => {
+      const track = current.tracks.find((track) => track.id === active.trackId);
+      if (!track) return current;
+      let next = track,
+        activeSegmentId = current.activeSegmentId;
+      if (active.kind === "fixture") {
+        const fixture = track.fixtures.find((f) => f.id === active.id);
+        if (!fixture) return current;
+        const candidates = trackSegments(track, catalog.layouts)
+          .map((segment) => {
+            const dx = segment.x2 - segment.x1,
+              dz = segment.z2 - segment.z1;
+            const along = clamp(
+              ((mouseX - track.x - segment.x1) * dx +
+                (mouseZ - track.z - segment.z1) * dz) /
+                segment.length ** 2,
+              0,
+              1,
+            );
+            return {
+              segment,
+              along,
+              distance: Math.hypot(
+                mouseX - track.x - segment.x1 - along * dx,
+                mouseZ - track.z - segment.z1 - along * dz,
+              ),
+            };
+          })
+          .sort((a, b) => a.distance - b.distance);
+        const closest = candidates[0];
+        if (!closest) return current;
+        const { segment, along } = closest;
+        const t = findFreePosition(
+          track.fixtures.filter(
+            (f) =>
+              f.id !== fixture.id && (f.segmentId ?? "main") === segment.id,
+          ),
+          usableLength(segment),
+          fixture.type,
+          (along * segment.length - segment.padding) / usableLength(segment),
+          catalog.fixtures,
+        );
+        if (t === null) return current;
+        next = {
+          ...track,
+          fixtures: track.fixtures.map((f) =>
+            f.id === fixture.id ? { ...f, t, segmentId: segment.id } : f,
+          ),
+        };
+        activeSegmentId = segment.id;
+      } else {
+        const footprint = trackBounds(track, catalog.layouts);
+        next = {
+          ...track,
+          x: clamp(
+            active.x + (event.clientX - active.startX) / scale,
+            -(current.roomW - footprint.width) / 2 + 0.2,
+            (current.roomW - footprint.width) / 2 - 0.2,
+          ),
+          z: clamp(
+            active.z + (event.clientY - active.startY) / scale,
+            -(current.roomD - footprint.depth) / 2 + 0.35,
+            (current.roomD - footprint.depth) / 2 - 0.35,
+          ),
+        };
+        if (current.tracks.some((other) => tracksOverlap(next, other, catalog)))
+          return current;
+      }
+      return {
+        ...current,
+        activeSegmentId,
+        tracks: current.tracks.map((track) =>
+          track.id === next.id ? next : track,
+        ),
+      };
+    });
   };
   return (
     <div id="plan-view" ref={host}>
@@ -136,95 +228,130 @@ export default function Plan({ project, setProject }: PlanProps) {
         </defs>
         <rect width={width} height={height} fill="#e8ebe5" />
         <rect
-          x={x}
-          y={y}
-          width={w}
-          height={d}
+          x={roomX}
+          y={roomY}
+          width={roomW}
+          height={roomD}
           fill="#fafaf6"
           stroke="#adb4a8"
           strokeWidth="2"
         />
-        <rect x={x} y={y} width={w} height={d} fill="url(#grid)" opacity=".6" />
-        <text x={x + 12} y={y + 25} className="plan-label">
+        <rect
+          x={roomX}
+          y={roomY}
+          width={roomW}
+          height={roomD}
+          fill="url(#grid)"
+          opacity=".6"
+        />
+        <text x={roomX + 12} y={roomY + 25} className="plan-label">
           ПОТОЛОК · {project.roomW.toFixed(1)} × {project.roomD.toFixed(1)} М
         </text>
-        <line
-          className="rail-hit"
-          x1={railX - (project.trackL * scale) / 2}
-          x2={railX + (project.trackL * scale) / 2}
-          y1={railY}
-          y2={railY}
-          stroke="transparent"
-          strokeWidth="30"
-        />
-        <line
-          x1={railX - (project.trackL * scale) / 2}
-          x2={railX + (project.trackL * scale) / 2}
-          y1={railY}
-          y2={railY}
-          stroke={project.color === "black" ? "#202522" : "#afb4ae"}
-          strokeWidth="9"
-          strokeLinecap="round"
-          pointerEvents="none"
-        />
-        {project.fixtures.map((f) => {
-          const selected = project.selected === f.id;
-          const body = project.color === "black" ? "#26302c" : "#dce1db";
-          const edge = project.color === "black" ? "#111b17" : "#8d9990";
-          const width =
-            (f.type === "line" ? 0.38 : f.type === "wide" ? 0.2 : 0.16) * scale;
-          const radius = width / 2;
+        {project.tracks.map((track, index) => {
+          const segments = trackSegments(track, catalog.layouts),
+            footprint = trackBounds(track, catalog.layouts);
+          const cx = width / 2 + track.x * scale,
+            cy = height / 2 + track.z * scale;
+          const color = track.color === "black" ? "#202522" : "#a7b0a7";
           return (
-            <g
-              key={f.id}
-              className="plan-fixture"
-              data-id={f.id}
-              transform={`translate(${railX + (f.t - 0.5) * project.trackL * scale},${railY})`}
-            >
-              {f.type === "line" ? (
-                <>
-                  <rect
-                    x={-width / 2}
-                    y={-0.05 * scale}
-                    width={width}
-                    height={0.1 * scale}
-                    rx="2"
-                    fill={body}
-                    stroke={selected ? "#7e9f58" : edge}
-                    strokeWidth={selected ? 3 : 1.5}
-                  />
-                  <rect
-                    x={-width * 0.42}
-                    y={-0.022 * scale}
-                    width={width * 0.84}
-                    height={0.044 * scale}
-                    rx="1"
-                    fill="#fff6dc"
-                    pointerEvents="none"
-                  />
-                </>
-              ) : (
-                <>
-                  <circle
-                    r={radius}
-                    fill={body}
-                    stroke={selected ? "#7e9f58" : edge}
-                    strokeWidth={selected ? 3 : 1.5}
-                  />
-                  <circle
-                    r={radius * (f.type === "wide" ? 0.75 : 0.64)}
-                    fill="#e7e8df"
-                    stroke="#9da99e"
-                    strokeWidth="1"
-                    pointerEvents="none"
-                  />
-                  <circle
-                    r={radius * (f.type === "wide" ? 0.5 : 0.33)}
-                    fill={f.type === "wide" ? "#f9f3df" : "#acb8ad"}
-                    pointerEvents="none"
-                  />
-                </>
-              )}
+            <g key={track.id}>
+              <text
+                x={cx - (footprint.width / 2) * scale}
+                y={cy - (footprint.depth / 2) * scale - 16}
+                className="plan-label"
+                pointerEvents="none"
+              >
+                ТРЕК {index + 1}
+              </text>
+              {segments.map((segment) => {
+                const selected =
+                  project.activeTrackId === track.id &&
+                  project.activeSegmentId === segment.id;
+                const points = {
+                  x1: cx + segment.x1 * scale,
+                  x2: cx + segment.x2 * scale,
+                  y1: cy + segment.z1 * scale,
+                  y2: cy + segment.z2 * scale,
+                };
+                return (
+                  <g key={segment.id}>
+                    <line
+                      {...points}
+                      className="rail-hit"
+                      data-track-id={track.id}
+                      data-segment-id={segment.id}
+                      stroke="transparent"
+                      strokeWidth="24"
+                    >
+                      <title>
+                        {segment.label} · Трек {index + 1}
+                      </title>
+                    </line>
+                    <line
+                      {...points}
+                      stroke={selected ? "#8aaa69" : color}
+                      strokeWidth={selected ? 12 : 9}
+                      strokeLinecap="round"
+                      pointerEvents="none"
+                    />
+                    <line
+                      {...points}
+                      stroke={color}
+                      strokeWidth="7"
+                      strokeLinecap="round"
+                      pointerEvents="none"
+                    />
+                  </g>
+                );
+              })}
+              {track.fixtures.map((fixture) => {
+                const product = catalog.fixtures.find(
+                  (item) => item.id === fixture.type,
+                );
+                const segment = segments.find(
+                  (segment) => segment.id === (fixture.segmentId ?? "main"),
+                );
+                if (!segment) return null;
+                const point = fixturePoint(segment, fixture.t),
+                  w = fixtureWidth(fixture.type, catalog.fixtures) * scale;
+                const h =
+                  (product?.shape === "line"
+                    ? 0.14
+                    : fixtureWidth(fixture.type, catalog.fixtures)) * scale;
+                const angle =
+                  (Math.atan2(
+                    segment.z2 - segment.z1,
+                    segment.x2 - segment.x1,
+                  ) *
+                    180) /
+                  Math.PI;
+                return (
+                  <g
+                    key={fixture.id}
+                    className="plan-fixture"
+                    data-track-id={track.id}
+                    data-fixture-id={fixture.id}
+                    data-segment-id={segment.id}
+                    transform={`translate(${cx + point.x * scale},${cy + point.z * scale}) rotate(${angle})`}
+                  >
+                    <title>
+                      {product?.name ?? fixture.type} · {segment.label}
+                    </title>
+                    <FixtureGlyph
+                      shape={product?.shape ?? "spot"}
+                      color={track.color}
+                      selected={
+                        project.selectedFixture?.trackId === track.id &&
+                        project.selectedFixture.id === fixture.id
+                      }
+                      x={-w / 2}
+                      y={-h / 2}
+                      width={w}
+                      height={h}
+                    />
+                  </g>
+                );
+              })}
             </g>
           );
         })}

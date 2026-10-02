@@ -1,27 +1,31 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import ProjectSummary from "./ProjectSummary";
 import Room3D from "./Room3D";
 import Plan from "./Plan";
 import FixtureImage from "./FixtureImage";
+import type { Project, TrackPlacement } from "../shared";
 import {
-  catalog as demoCatalog,
-  quote as demoQuote,
-  type Catalog,
-  type FixtureType,
-  type Project,
-  type Quote,
-} from "../shared";
-import { DEFAULT_PROJECT, normalizeProject, readSavedProject } from "./project";
+  DEFAULT_PROJECT,
+  createDefaultProject,
+  normalizeProject,
+  readSavedProject,
+} from "./project";
+import { trackBounds, trackLength } from "../domain/trackGeometry";
+import TrackShapeEditor from "./TrackShapeEditor";
 import {
-  findFreePosition,
-  minimumTrackLength,
-  placeFixtures,
-} from "./placement";
+  addFixture,
+  cannotAddFixture,
+  fixtureCount,
+  newTrack,
+  removeFixture as deleteFixture,
+  removeTrack,
+  updateTrack,
+} from "./projectActions";
+import CatalogPicker from "./CatalogPicker";
+import { errorMessage, useCatalog, useQuote } from "./useCatalog";
 
-const pagesDemo = import.meta.env.VITE_PAGES_DEMO === "true";
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
 const money = (n: number) => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Неизвестная ошибка";
 const SectionHead = ({
   number,
   title,
@@ -86,170 +90,97 @@ function NumberField({
 }
 
 export default function App() {
-  const [project, setProject] = useState<Project>(readSavedProject);
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [quote, setQuote] = useState<Quote | null>(null);
-  const [error, setError] = useState("");
+  const [project, setProject] = useState<Project>(DEFAULT_PROJECT);
+  const { catalog, error: catalogError } = useCatalog();
+  const { quote, error: quoteError, pending } = useQuote(project, catalog);
+  const error = catalogError || quoteError;
   const [toast, setToast] = useState("");
+  const [choosingTrack, setChoosingTrack] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const loadedRef = useRef(false);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    if (pagesDemo) {
-      setCatalog(demoCatalog);
-      return;
-    }
-    const controller = new AbortController();
-    fetch("/api/catalog", { signal: controller.signal })
-      .then((r) => {
-        if (!r.ok) throw Error("Каталог недоступен");
-        return r.json();
-      })
-      .then(setCatalog)
-      .catch((e) => {
-        if (!(e instanceof Error && e.name === "AbortError")) {
-          setError(errorMessage(e));
-          setQuote(null);
-        }
-      });
-    return () => controller.abort();
-  }, []);
+    if (!catalog || loadedRef.current) return;
+    setProject(readSavedProject(catalog));
+    loadedRef.current = true;
+    setLoaded(true);
+  }, [catalog]);
   useEffect(() => {
+    if (!loaded) return;
     try {
       localStorage.setItem("lights-prototype-v1", JSON.stringify(project));
     } catch {
       /* Storage may be unavailable. */
     }
-  }, [project]);
-  // Position changes do not affect prices, so an unchanged string does not refetch a quote.
-  const quoteInput = JSON.stringify({
-    mount: project.mount,
-    trackL: project.trackL,
-    fixtures: project.fixtures.map((fixture) => ({ type: fixture.type })),
-  });
-  useEffect(() => {
-    if (!catalog) return;
-    if (pagesDemo) {
-      try {
-        setQuote(demoQuote(JSON.parse(quoteInput)));
-        setError("");
-      } catch (e) {
-        setError(errorMessage(e));
-        setQuote(null);
-      }
-      return;
-    }
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      fetch("/api/quote", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: quoteInput,
-        signal: controller.signal,
-      })
-        .then(async (r) => {
-          const body = await r.json();
-          if (!r.ok) throw Error(body.error || "Ошибка расчёта");
-          return body as Quote;
-        })
-        .then((data) => {
-          if (controller.signal.aborted) return;
-          setQuote(data);
-          setError("");
-        })
-        .catch((e) => {
-          if (controller.signal.aborted) return;
-          if (!(e instanceof Error && e.name === "AbortError")) {
-            setError(errorMessage(e));
-            setQuote(null);
-          }
-        });
-    }, 200);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [catalog, quoteInput]);
+  }, [project, loaded]);
+  const activeTrack = project.tracks.find(
+    (track) => track.id === project.activeTrackId,
+  );
   const change = (patch: Partial<Project>) =>
-    setProject((p) => ({ ...p, ...patch }));
+    setProject((current) => ({ ...current, ...patch }));
+  const editTrack = (update: (track: TrackPlacement) => TrackPlacement) =>
+    setProject((current) =>
+      updateTrack(current, current.activeTrackId ?? -1, update),
+    );
   const setRoom = (key: "roomW" | "roomD" | "roomH", value: number) =>
-    setProject((p) => {
-      const next = {
-        ...p,
-        [key]:
-          key === "roomW"
-            ? Math.max(value, minimumTrackLength(p.fixtures) + 0.4)
-            : value,
-      };
-      next.trackL = clamp(next.trackL, 0.8, Math.max(0.8, next.roomW - 0.4));
-      next.fixtures = placeFixtures(next.fixtures, next.trackL);
-      next.trackX = clamp(
-        next.trackX,
-        -(next.roomW - next.trackL) / 2 + 0.2,
-        (next.roomW - next.trackL) / 2 - 0.2,
-      );
-      next.trackZ = clamp(
-        next.trackZ,
-        -next.roomD / 2 + 0.35,
-        next.roomD / 2 - 0.35,
-      );
+    setProject((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "roomW")
+        next.roomW = Math.max(
+          value,
+          ...current.tracks.map(
+            (track) =>
+              trackBounds(track, catalog?.layouts ?? []).width +
+              2 * Math.abs(track.x) +
+              0.4,
+          ),
+        );
+      if (key === "roomD")
+        next.roomD = Math.max(
+          value,
+          ...current.tracks.map((track) => Math.abs(track.z) * 2 + 0.7),
+        );
       return next;
     });
-  const addFixture = (type: FixtureType) =>
-    setProject((p) => {
-      if (p.fixtures.length >= 40) return p;
-      const id = Math.max(0, ...p.fixtures.map((f) => f.id)) + 1;
-      const fixture = { id, type, t: 0.5 };
-      if (minimumTrackLength([...p.fixtures, fixture]) > p.trackL + 1e-8)
-        return p;
-      const t = findFreePosition(p.fixtures, p.trackL, type);
-      const fixtures =
-        t === null
-          ? placeFixtures([...p.fixtures, fixture], p.trackL)
-          : [...p.fixtures, { ...fixture, t }];
-      return { ...p, selected: id, fixtures };
-    });
-  const removeFixture = (id: number) =>
-    setProject((p) => {
-      const fixtures = p.fixtures.filter((f) => f.id !== id);
-      return {
-        ...p,
-        fixtures,
-        selected: p.selected === id ? (fixtures[0]?.id ?? null) : p.selected,
-      };
-    });
+  const removeFixture = (trackId: number, id: number) =>
+    setProject((current) => deleteFixture(current, trackId, id));
   useEffect(() => {
-    const selected = project.selected;
-    if (project.view !== "plan" || selected === null) return;
+    const selected = project.selectedFixture;
+    if (project.view !== "plan" || !selected) return;
     const removeOnKey = (event: KeyboardEvent) => {
-      if (event.key !== "Backspace" && event.key !== "Delete") return;
-      if (event.altKey || event.ctrlKey || event.metaKey) return;
-      const target = event.target;
       if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+        !["Backspace", "Delete"].includes(event.key) ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      )
+        return;
+      if (
+        event.target instanceof HTMLElement &&
+        (event.target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName))
       )
         return;
       event.preventDefault();
-      removeFixture(selected);
+      setProject((current) =>
+        deleteFixture(current, selected.trackId, selected.id),
+      );
     };
-    window.addEventListener("keydown", removeOnKey);
-    return () => window.removeEventListener("keydown", removeOnKey);
-  }, [project.view, project.selected]);
-  useEffect(() => {
-    if (project.view !== "plan" || project.selected === null) return;
     const clearSelection = (event: globalThis.PointerEvent) => {
       if (
         event.target instanceof Element &&
         event.target.closest(".plan-fixture")
       )
         return;
-      setProject((current) => ({ ...current, selected: null }));
+      setProject((current) => ({ ...current, selectedFixture: null }));
     };
+    window.addEventListener("keydown", removeOnKey);
     document.addEventListener("pointerdown", clearSelection);
-    return () => document.removeEventListener("pointerdown", clearSelection);
-  }, [project.view, project.selected]);
-  const product = (id: string) => catalog?.fixtures.find((x) => x.id === id);
-  const fixturesInTrackOrder = [...project.fixtures].sort((a, b) => a.t - b.t);
+    return () => {
+      window.removeEventListener("keydown", removeOnKey);
+      document.removeEventListener("pointerdown", clearSelection);
+    };
+  }, [project.view, project.selectedFixture]);
   const flash = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(""), 2800);
@@ -270,7 +201,10 @@ export default function App() {
     try {
       if (file.size > 1_000_000)
         throw new Error("Файл проекта слишком большой");
-      const loaded = normalizeProject(JSON.parse(await file.text()));
+      const loaded = normalizeProject(
+        JSON.parse(await file.text()),
+        catalog ?? undefined,
+      );
       if (!loaded) throw new Error("Файл не содержит проект освещения");
       setProject(loaded);
       flash("Проект открыт");
@@ -285,7 +219,10 @@ export default function App() {
       "Проект трекового освещения",
       "",
       `Комната: ${project.roomW} × ${project.roomD} × ${project.roomH} м`,
-      `Трек: ${project.trackL} м, ${project.color === "black" ? "чёрный" : "белый"}, ${project.mount === "surface" ? "накладной" : "встроенный"}`,
+      ...project.tracks.map(
+        (track, index) =>
+          `Трек ${index + 1}: ${catalog?.tracks.find((item) => item.id === track.productId)?.name ?? track.productId}, ${trackLength(track, catalog?.layouts ?? []).toFixed(1)} м, ${track.color === "black" ? "чёрный" : "белый"}, ${track.fixtures.length} светильников`,
+      ),
       `Свет: ${project.kelvin} K, яркость ${project.brightness}%`,
       "",
       "Комплектация:",
@@ -321,7 +258,7 @@ export default function App() {
           <button
             className="text-btn"
             onClick={() => {
-              setProject(DEFAULT_PROJECT);
+              setProject(createDefaultProject(catalog ?? undefined));
               flash("Проект сброшен");
             }}
           >
@@ -367,14 +304,30 @@ export default function App() {
                 <NumberField
                   label="Ширина"
                   value={project.roomW}
-                  min={2}
+                  min={Math.max(
+                    2,
+                    ...project.tracks.map(
+                      (track) =>
+                        trackBounds(track, catalog?.layouts ?? []).width +
+                        2 * Math.abs(track.x) +
+                        0.4,
+                    ),
+                  )}
                   max={12}
                   onChange={(v) => setRoom("roomW", v)}
                 />
                 <NumberField
                   label="Глубина"
                   value={project.roomD}
-                  min={2}
+                  min={Math.max(
+                    2,
+                    ...project.tracks.map(
+                      (track) =>
+                        trackBounds(track, catalog?.layouts ?? []).depth +
+                        2 * Math.abs(track.z) +
+                        0.7,
+                    ),
+                  )}
                   max={12}
                   onChange={(v) => setRoom("roomD", v)}
                 />
@@ -391,143 +344,180 @@ export default function App() {
               <SectionHead
                 number="02"
                 title="Трековая система"
-                subtitle="Настройте трек на потолке"
+                subtitle={`${project.tracks.length} треков в проекте`}
               />
-              <div className="color-label mb-[10px] flex justify-between text-[11px] font-bold text-[#4c5b4f]">
-                Тип монтажа
-              </div>
-              <div className="mount-options mb-4 grid grid-cols-2 gap-2">
-                {(
-                  catalog?.tracks ?? [
-                    {
-                      id: "surface",
-                      name: "Накладной трек",
-                      description: "На поверхность потолка",
-                    },
-                    {
-                      id: "recessed",
-                      name: "Встроенный трек",
-                      description: "Вровень с потолком",
-                    },
-                  ]
-                ).map((track) => (
+              <div
+                className="mb-3 grid max-h-40 gap-1 overflow-y-auto pr-1 [scrollbar-gutter:stable]"
+                aria-label="Треки проекта"
+              >
+                {project.tracks.map((track, index) => (
                   <button
                     key={track.id}
-                    className={`mount-option ${project.mount === track.id ? "active" : ""}`}
-                    onClick={() => change({ mount: track.id })}
+                    aria-pressed={track.id === project.activeTrackId}
+                    className={`rounded border p-2 text-left text-xs ${track.id === project.activeTrackId ? "border-[#8aaa69] bg-[#edf3e5]" : "border-[#e1e7db]"}`}
+                    onClick={() =>
+                      change({
+                        activeTrackId: track.id,
+                        activeSegmentId: "main",
+                        selectedFixture: null,
+                      })
+                    }
                   >
-                    <strong>
-                      {track.id === "surface" ? "Накладной" : "Встроенный"}
-                    </strong>
-                    <small>{track.description}</small>
+                    <strong>Трек {index + 1}</strong>
+                    <span className="float-right text-[#7c8976]">
+                      {trackLength(track, catalog?.layouts ?? []).toFixed(1)} м
+                      · {track.fixtures.length} шт.
+                    </span>
                   </button>
                 ))}
               </div>
-              <div className="color-label mb-[10px] flex justify-between text-[11px] font-bold text-[#4c5b4f]">
-                Цвет профиля
-              </div>
-              <div className="color-options grid grid-cols-2 gap-2">
-                <button
-                  className={`color-option ${project.color === "black" ? "active" : ""}`}
-                  onClick={() => change({ color: "black" })}
-                >
-                  <span className="swatch black size-[15px] rounded-full border border-[#d6ddd4]" />{" "}
-                  Чёрный{" "}
-                  <span className="check ml-auto hidden text-[#78995d]">✓</span>
-                </button>
-                <button
-                  className={`color-option ${project.color === "white" ? "active" : ""}`}
-                  onClick={() => change({ color: "white" })}
-                >
-                  <span className="swatch white size-[15px] rounded-full border border-[#d6ddd4]" />{" "}
-                  Белый{" "}
-                  <span className="check ml-auto hidden text-[#78995d]">✓</span>
-                </button>
-              </div>
-              <div className="track-length mt-[17px]">
-                <label>
-                  Длина трека <strong>{project.trackL.toFixed(1)} м</strong>
-                </label>
-                <input
-                  id="trackL"
-                  type="range"
-                  min="0.8"
-                  aria-label="Длина трека"
-                  max={Math.max(0.8, project.roomW - 0.4)}
-                  step="0.1"
-                  value={project.trackL}
-                  onChange={(e) =>
-                    setProject((p) => {
-                      const trackL = Math.max(
-                        Number(e.target.value),
-                        Math.ceil(minimumTrackLength(p.fixtures) * 10) / 10,
-                        0.8,
-                      );
-                      return {
-                        ...p,
-                        trackL,
-                        fixtures: placeFixtures(p.fixtures, trackL),
-                        trackX: clamp(
-                          p.trackX,
-                          -(p.roomW - trackL) / 2 + 0.2,
-                          (p.roomW - trackL) / 2 - 0.2,
-                        ),
-                      };
-                    })
-                  }
-                />
-                <div className="range-ends mt-[5px] flex justify-between text-[10px] text-[#a5aea4]">
-                  <span>0,8 м</span>
-                  <span>{(project.roomW - 0.4).toFixed(1)} м</span>
-                </div>
-              </div>
-              <p className="tip mt-4 border-l-2 border-[#abc196] bg-[#f5f7f2] px-[10px] py-2 text-[10px] leading-[1.5] text-[#9aa699]">
-                Перемещайте трек и светильники на плане потолка.
-              </p>
+              <button
+                className="outline-btn mb-4 w-full disabled:opacity-40"
+                disabled={
+                  !catalog ||
+                  !newTrack(project, catalog.tracks[0]?.id ?? "", catalog)
+                }
+                onClick={() => {
+                  if (!catalog?.tracks[0]) return;
+                  setProject((current) => {
+                    const track = newTrack(
+                      current,
+                      catalog.tracks[0].id,
+                      catalog,
+                    );
+                    return track
+                      ? {
+                          ...current,
+                          tracks: [...current.tracks, track],
+                          activeTrackId: track.id,
+                          activeSegmentId: "main",
+                          selectedFixture: null,
+                        }
+                      : current;
+                  });
+                  setChoosingTrack(true);
+                }}
+              >
+                + Добавить трек
+              </button>
+              {activeTrack && catalog && (
+                <>
+                  <button
+                    className="mb-3 flex w-full items-center justify-between rounded bg-[#f0f3ec] p-3 text-left text-xs"
+                    onClick={() => setChoosingTrack(!choosingTrack)}
+                    aria-expanded={choosingTrack}
+                  >
+                    <span>
+                      {catalog.tracks.find(
+                        (item) => item.id === activeTrack.productId,
+                      )?.name ?? activeTrack.productId}
+                    </span>
+                    <span className="ml-2 text-[#7e965f]">Изменить</span>
+                  </button>
+                  {choosingTrack && (
+                    <div className="mb-4">
+                      <CatalogPicker
+                        items={catalog.tracks}
+                        resource="tracks"
+                        label="Треки"
+                        category={(item) =>
+                          item.mount === "surface" ? "Накладные" : "Встроенные"
+                        }
+                        description={(item) => item.description}
+                        selectedId={activeTrack.productId}
+                        disabledReason={(item) =>
+                          item.layoutIds.includes(activeTrack.layoutId)
+                            ? null
+                            : "Профиль не поддерживает выбранную форму"
+                        }
+                        actionLabel="Выбрать"
+                        onPick={(item) => {
+                          editTrack((track) => ({
+                            ...track,
+                            productId: item.id,
+                          }));
+                          setChoosingTrack(false);
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="color-options mb-4 grid grid-cols-2 gap-2">
+                    {(["black", "white"] as const).map((color) => (
+                      <button
+                        key={color}
+                        className={`color-option ${activeTrack.color === color ? "active" : ""}`}
+                        onClick={() =>
+                          editTrack((track) => ({ ...track, color }))
+                        }
+                      >
+                        <span
+                          className={`swatch ${color} size-[15px] rounded-full border border-[#d6ddd4]`}
+                        />
+                        {color === "black" ? "Чёрный" : "Белый"}
+                      </button>
+                    ))}
+                  </div>
+                  <TrackShapeEditor
+                    project={project}
+                    track={activeTrack}
+                    catalog={catalog}
+                    onChange={setProject}
+                    onReject={() =>
+                      flash(
+                        "Недостаточно места: проверьте размеры комнаты, соседние треки и светильники.",
+                      )
+                    }
+                    onSelectSegment={(id) =>
+                      change({ activeSegmentId: id, selectedFixture: null })
+                    }
+                  />
+                  <p className="mt-3 text-[10px] text-[#8b9785]">
+                    Выберите трек здесь или на плане. Новые светильники
+                    добавляются на выбранный трек.
+                  </p>
+                </>
+              )}
             </section>
             <section className="section fixtures-section border-t border-[#e9ede6] pt-[21px] pb-[22px]">
               <SectionHead
                 number="03"
                 title="Светильники"
-                subtitle="Добавьте приборы на трек"
+                subtitle={
+                  activeTrack
+                    ? `Трек ${project.tracks.indexOf(activeTrack) + 1} · ${catalog?.layouts.find((layout) => layout.id === activeTrack.layoutId)?.segments.find((segment) => segment.id === project.activeSegmentId)?.label ?? "Линия"}`
+                    : "Сначала добавьте трек"
+                }
               />
-              <div className="catalog grid gap-[7px]">
-                {catalog?.fixtures.map((item) => (
-                  <button
-                    key={item.id}
-                    className="product-card flex items-center gap-[9px] rounded-md border border-[#e8ece6] bg-white p-2 text-left text-[#263327] transition duration-150 hover:border-[#9db88c] hover:bg-[#fbfdf9] disabled:cursor-not-allowed disabled:border-[#e8ece6] disabled:bg-[#f1f3ef] disabled:opacity-[.42]"
-                    onClick={() => addFixture(item.id)}
-                    disabled={
-                      project.fixtures.length >= 40 ||
-                      minimumTrackLength([
-                        ...project.fixtures,
-                        { id: -1, type: item.id, t: 0.5 },
-                      ]) >
-                        project.trackL + 1e-8
-                    }
-                  >
-                    <span className="product-symbol grid h-12 w-[68px] shrink-0 place-items-center rounded bg-[#eef1ea]">
-                      <FixtureImage type={item.id} className="h-11 w-[62px]" />
-                    </span>
-                    <span className="product-copy grid flex-1 gap-[3px]">
-                      <strong>{item.name}</strong>
-                      <small>
-                        {item.type} · {item.watts} Вт
-                      </small>
-                    </span>
-                    <span className="product-price text-[10px] font-bold">
-                      {money(item.price)}
-                    </span>
-                    <span className="product-add text-lg text-[#83a469]">
-                      +
-                    </span>
-                  </button>
-                )) || (
-                  <p className="empty-note text-[11px] text-[#96a195]">
-                    Загрузка каталога…
-                  </p>
-                )}
-              </div>
+              {catalog ? (
+                <CatalogPicker
+                  items={catalog.fixtures}
+                  resource="fixtures"
+                  label="Светильники"
+                  category={(item) => item.type}
+                  description={(item) => `${item.type} · ${item.watts} Вт`}
+                  preview={(item) => (
+                    <FixtureImage
+                      shape={item.shape}
+                      imageUrl={item.imageUrl}
+                      name={item.name}
+                      className="h-11 w-14"
+                    />
+                  )}
+                  actionLabel="Добавить"
+                  onPick={(item) =>
+                    setProject((current) =>
+                      addFixture(current, item.id, catalog),
+                    )
+                  }
+                  disabledReason={(item) =>
+                    cannotAddFixture(project, activeTrack, item.id, catalog)
+                  }
+                />
+              ) : (
+                <p className="text-xs text-[#8b9785]">
+                  {error || "Загрузка каталога…"}
+                </p>
+              )}
             </section>
             <section className="section atmosphere border-t border-[#e9ede6] pt-[21px] pb-[22px]">
               <SectionHead
@@ -598,7 +588,13 @@ export default function App() {
             {project.view === "3d" ? (
               <Room3D project={project} catalog={catalog} />
             ) : (
-              catalog && <Plan project={project} setProject={setProject} />
+              catalog && (
+                <Plan
+                  project={project}
+                  catalog={catalog}
+                  setProject={setProject}
+                />
+              )
             )}
             <div className="scene-badge absolute top-[23px] left-[25px] z-2 rounded bg-[#fffefaed] px-3 py-[9px] text-[9px] font-extrabold tracking-[.1em] text-[#526453] shadow-[0_2px_12px_#34412f16] max-[650px]:top-3 max-[650px]:left-3 max-[650px]:text-[8px]">
               <span className="live-dot mr-[7px] inline-block size-[6px] rounded-full bg-[#89b163]" />{" "}
@@ -617,11 +613,7 @@ export default function App() {
           <div className="workspace-bottom grid h-[95px] grid-cols-[1fr_1.2fr_1.2fr_1.6fr] border-t border-[#e3e8df] bg-white max-[1150px]:grid-cols-3 max-[650px]:h-20">
             <div className="metric border-r border-[#edf0eb] px-[18px] pt-[22px] pb-[17px] max-[1150px]:px-[10px] max-[1150px]:py-[18px]">
               <span>СВЕТИЛЬНИКИ</span>
-              <strong>
-                {String(
-                  quote?.fixtureCount ?? project.fixtures.length,
-                ).padStart(2, "0")}
-              </strong>
+              <strong>{String(fixtureCount(project)).padStart(2, "0")}</strong>
             </div>
             <div className="metric border-r border-[#edf0eb] px-[18px] pt-[22px] pb-[17px] max-[1150px]:px-[10px] max-[1150px]:py-[18px]">
               <span>СУММАРНАЯ МОЩНОСТЬ</span>
@@ -644,95 +636,31 @@ export default function App() {
             </div>
           </div>
         </div>
-        <aside className="summary flex min-h-0 flex-col overflow-hidden border-l border-[#e5e9e2] bg-white px-[22px] py-[30px] max-[900px]:min-h-[600px] max-[650px]:min-h-0 max-[650px]:px-[22px] max-[650px]:py-[25px]">
-          <div className="eyebrow text-[10px] font-extrabold tracking-[.15em] text-[#879f71]">
-            03 / РЕЗУЛЬТАТ
-          </div>
-          <h2>Ваш проект</h2>
-          <p className="summary-sub">
-            {pagesDemo
-              ? "Демоданные · расчёт в браузере"
-              : "Комплектация рассчитывается сервером"}
-          </p>
-          <div className="summary-heading flex justify-between border-b border-[#e9ede6] pb-3 text-[10px] font-extrabold tracking-[.1em]">
-            СПЕЦИФИКАЦИЯ{" "}
-            <span>
-              {quote
-                ? quote.items.filter((item) => !product(item.id)).length +
-                  project.fixtures.length
-                : "—"}{" "}
-              поз.
-            </span>
-          </div>
-          <div className="summary-list mb-6 min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable]">
-            {quote?.items
-              .filter((item) => !product(item.id))
-              .map((item) => (
-                <div
-                  className="spec-row flex items-center gap-[10px] border-b border-[#eff1ed] py-[13px]"
-                  key={item.id}
-                >
-                  <span className="spec-icon grid size-[30px] shrink-0 place-items-center rounded bg-[#edf1e9] text-[#526b51]">
-                    {item.id === "power" ? "⌁" : "━"}
-                  </span>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <small>{item.description}</small>
-                  </div>
-                  <b>×{item.quantity}</b>
-                </div>
-              ))}
-            {fixturesInTrackOrder.map((fixture, index) => {
-              const item = product(fixture.type);
-              return (
-                <div
-                  className="spec-row flex items-center gap-[10px] border-b border-[#eff1ed] py-[13px]"
-                  key={`fixture-${fixture.id}`}
-                >
-                  <span className="spec-icon grid size-[30px] shrink-0 place-items-center rounded bg-[#edf1e9] text-[#526b51]">
-                    <FixtureImage
-                      type={item?.id ?? fixture.type}
-                      className="h-7 w-7"
-                    />
-                  </span>
-                  <div>
-                    <strong>
-                      {item?.name ?? fixture.type} #{index + 1}
-                    </strong>
-                    <small>
-                      {item?.type} · {item?.watts} Вт
-                    </small>
-                  </div>
-                  <button
-                    className="spec-remove size-7 shrink-0 rounded border border-[#e1e8de] bg-white text-lg text-[#9aa99b] hover:border-[#d6aaa5] hover:text-[#a24a42]"
-                    type="button"
-                    aria-label={`Удалить ${item?.name ?? "светильник"} №${index + 1}`}
-                    onClick={() => removeFixture(fixture.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          <div className="summary-total mt-auto border-t border-[#e8ece6] pt-5 max-[650px]:mt-[30px]">
-            <span>Предварительная стоимость</span>
-            <strong>{quote ? money(quote.total) : "—"}</strong>
-            <small>Демонстрационные цены. Не является офертой.</small>
-            <button
-              className="primary-btn flex w-full items-center justify-between rounded-md bg-[#8aa665] p-[15px] text-[11px] font-extrabold text-white hover:bg-[#769452]"
-              disabled={!quote}
-              onClick={download}
-            >
-              Скачать спецификацию <span>↗</span>
-            </button>
-            <p>
-              {error || "Проект автоматически сохраняется в этом браузере."}
-            </p>
-          </div>
-        </aside>
+        <ProjectSummary
+          project={project}
+          catalog={catalog}
+          quote={quote}
+          pending={pending}
+          error={error}
+          onSelectTrack={(id) =>
+            change({
+              activeTrackId: id,
+              activeSegmentId: "main",
+              selectedFixture: null,
+            })
+          }
+          onRemoveTrack={(id) =>
+            setProject((current) => removeTrack(current, id))
+          }
+          removeFixture={removeFixture}
+          onDownload={download}
+        />
       </main>
-      <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
+      <div
+        className={`toast pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded bg-[#283725] px-5 py-3 text-sm text-white shadow-lg transition-opacity ${toast ? "opacity-100" : "opacity-0"}`}
+      >
+        {toast}
+      </div>
     </>
   );
 }

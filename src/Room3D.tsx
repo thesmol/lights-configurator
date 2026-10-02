@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { trackSegments, fixturePoint } from "../domain/trackGeometry";
 import type { Catalog, Project } from "../shared";
 
 const clamp = (n: number, min: number, max: number) =>
@@ -90,18 +91,19 @@ export default function Room3D({
     phi: number;
     radius: number | null;
   }>({ theta: 0.72, phi: 1.02, radius: null });
-  const lampsRef = useRef<
-    Array<{
-      spot: THREE.SpotLight;
-      lens: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
-      baseIntensity: number;
-    }>
-  >([]);
   const renderRef = useRef<(() => void) | null>(null);
   const fixtureSceneRef = useRef<{
     group: THREE.Group;
-    railMat: THREE.MeshStandardMaterial;
-    rail: THREE.Mesh;
+    tracks: Map<
+      number,
+      {
+        signature: string;
+        group: THREE.Group;
+        rails: Map<string, THREE.Mesh>;
+        fixtures: Map<number, THREE.Group>;
+      }
+    >;
+    lights: THREE.SpotLight[];
   } | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -145,6 +147,16 @@ export default function Room3D({
       renderer.render(scene, camera);
     };
     renderRef.current = aim;
+    const resizeObserver = new ResizeObserver(() => {
+      const width = host.clientWidth,
+        height = host.clientHeight;
+      if (!width || !height) return;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+      aim();
+    });
+    resizeObserver.observe(host);
     scene.add(new THREE.AmbientLight(0xffffff, 0.72));
     const sun = new THREE.DirectionalLight(0xffffff, 0.85);
     sun.position.set(-3, 8, 5);
@@ -414,25 +426,20 @@ export default function Room3D({
       leaf.castShadow = true;
       scene.add(leaf);
     }
-    const railMat = new THREE.MeshStandardMaterial({
-      color: project.color === "black" ? "#171c1b" : "#f5f5f1",
-      metalness: 0.35,
-      roughness: 0.38,
-    });
-    const rail = box(
-      1,
-      project.mount === "surface" ? 0.07 : 0.025,
-      0.075,
-      project.trackX,
-      project.roomH - (project.mount === "surface" ? 0.045 : 0.015),
-      project.trackZ,
-      railMat,
-    );
-    rail.scale.x = project.trackL;
-    rail.castShadow = false;
     const fixtureGroup = new THREE.Group();
     scene.add(fixtureGroup);
-    fixtureSceneRef.current = { group: fixtureGroup, railMat, rail };
+    const lights = Array.from({ length: 4 }, () => {
+      const spot = new THREE.SpotLight();
+      spot.intensity = 0;
+      spot.castShadow = false;
+      fixtureGroup.add(spot, spot.target);
+      return spot;
+    });
+    fixtureSceneRef.current = {
+      group: fixtureGroup,
+      tracks: new Map(),
+      lights,
+    };
     let dragging = false,
       lastX = 0,
       lastY = 0;
@@ -472,6 +479,7 @@ export default function Room3D({
     renderer.domElement.addEventListener("wheel", wheel, { passive: false });
     aim();
     return () => {
+      resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", down);
       renderer.domElement.removeEventListener("pointermove", move);
       renderer.domElement.removeEventListener("pointerup", up);
@@ -486,139 +494,177 @@ export default function Room3D({
       });
       fixtureSceneRef.current = null;
       renderRef.current = null;
-      lampsRef.current = [];
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [
-    project.roomW,
-    project.roomD,
-    project.roomH,
-    project.mount,
-    project.color,
-    catalog,
-  ]);
+  }, [project.roomW, project.roomD, project.roomH, catalog]);
   useEffect(() => {
-    const rail = fixtureSceneRef.current?.rail;
-    if (!rail) return;
-    rail.scale.x = project.trackL;
-    rail.position.x = project.trackX;
-    rail.position.z = project.trackZ;
-  }, [
-    project.roomW,
-    project.roomD,
-    project.roomH,
-    project.mount,
-    project.color,
-    project.trackL,
-    project.trackX,
-    project.trackZ,
-    catalog,
-  ]);
-  useEffect(() => {
-    const fixtureScene = fixtureSceneRef.current;
-    if (!fixtureScene || !catalog) return;
-    const { group, railMat } = fixtureScene;
-    group.traverse((node) => {
-      if (!(node instanceof THREE.Mesh)) return;
-      node.geometry.dispose();
-      if (node.material !== railMat) {
-        const materials = Array.isArray(node.material)
+    const content = fixtureSceneRef.current;
+    if (!content || !catalog) return;
+    const dispose = (group: THREE.Group) => {
+      const materials = new Set<THREE.Material>();
+      group.traverse((node) => {
+        if (!(node instanceof THREE.Mesh)) return;
+        node.geometry.dispose();
+        (Array.isArray(node.material)
           ? node.material
-          : [node.material];
-        materials.forEach((material) => material.dispose());
-      }
-    });
-    group.clear();
-    const color = lightColor(project.kelvin),
-      power = project.brightness / 100;
-    lampsRef.current = [];
-    const lightCount = Math.min(4, project.fixtures.length);
-    const illuminated = new Set(
-      Array.from({ length: lightCount }, (_, index) =>
-        lightCount === 1
-          ? 0
-          : Math.round(
-              (index * (project.fixtures.length - 1)) / (lightCount - 1),
-            ),
-      ),
-    );
-    for (const [index, f] of project.fixtures.entries()) {
-      const spec = catalog.fixtures.find((x) => x.id === f.type);
-      if (!spec) continue;
-      const x = project.trackX + (f.t - 0.5) * project.trackL;
-      const mountOffset = project.mount === "recessed" ? 0.05 : 0;
-      const mesh =
-        f.type === "line"
-          ? new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.07, 0.095), railMat)
-          : new THREE.Mesh(
-              new THREE.CylinderGeometry(
-                f.type === "wide" ? 0.082 : 0.065,
-                f.type === "wide" ? 0.092 : 0.075,
-                0.15,
-                20,
-              ),
-              railMat,
-            );
-      mesh.position.set(
-        x,
-        project.roomH - (f.type === "line" ? 0.11 : 0.16) + mountOffset,
-        project.trackZ,
-      );
-      mesh.castShadow = false;
-      group.add(mesh);
-      const lens = new THREE.Mesh(
-        new THREE.CircleGeometry(f.type === "line" ? 0.16 : 0.057, 20),
-        new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
-      );
-      lens.rotation.x = Math.PI / 2;
-      lens.position.set(
-        x,
-        project.roomH - (f.type === "line" ? 0.155 : 0.24) + mountOffset,
-        project.trackZ,
-      );
-      group.add(lens);
-      // Representative spotlights light the room; every fixture still has a visible lens.
-      if (!illuminated.has(index)) continue;
-      const spot = new THREE.SpotLight(
-        color,
-        power * (f.type === "line" ? 27 : 40),
-        project.roomH * 1.8,
-        THREE.MathUtils.degToRad(spec.beam / 2),
-        0.75,
-        1,
-      );
-      spot.position.set(x, project.roomH - 0.22 + mountOffset, project.trackZ);
-      spot.target.position.set(x, 0, project.trackZ);
-      spot.castShadow = false;
-      group.add(spot, spot.target);
-      lampsRef.current.push({
-        spot,
-        lens,
-        baseIntensity: f.type === "line" ? 27 : 40,
+          : [node.material]
+        ).forEach((material) => materials.add(material));
       });
+      materials.forEach((material) => material.dispose());
+      group.removeFromParent();
+    };
+    for (const [id, cached] of content.tracks) {
+      if (!project.tracks.some((track) => track.id === id)) {
+        dispose(cached.group);
+        content.tracks.delete(id);
+      }
     }
+    const color = lightColor(project.kelvin);
+    const lightSources: Array<{
+      x: number;
+      z: number;
+      beam: number;
+      intensity: number;
+    }> = [];
+    for (const track of project.tracks) {
+      const product = catalog.tracks.find(
+        (item) => item.id === track.productId,
+      );
+      const recessed = product?.mount === "recessed";
+      const signature = JSON.stringify([
+        track.productId,
+        track.layoutId,
+        track.color,
+        track.fixtures.map((f) => [f.id, f.type]),
+      ]);
+      let cached = content.tracks.get(track.id);
+      if (!cached || cached.signature !== signature) {
+        if (cached) dispose(cached.group);
+        const group = new THREE.Group();
+        const material = new THREE.MeshStandardMaterial({
+          color: track.color === "black" ? "#171c1b" : "#f5f5f1",
+          metalness: 0.35,
+          roughness: 0.38,
+        });
+        const rails = new Map<string, THREE.Mesh>();
+        for (const segment of trackSegments(track, catalog.layouts)) {
+          const rail = new THREE.Mesh(
+            new THREE.BoxGeometry(1, recessed ? 0.025 : 0.07, 0.075),
+            material,
+          );
+          rail.position.y = project.roomH - (recessed ? 0.015 : 0.045);
+          group.add(rail);
+          rails.set(segment.id, rail);
+        }
+        const fixtures = new Map<number, THREE.Group>();
+        for (const fixture of track.fixtures) {
+          const spec = catalog.fixtures.find(
+            (item) => item.id === fixture.type,
+          );
+          if (!spec) continue;
+          const unit = new THREE.Group();
+          const linear = spec.shape === "line";
+          const radius = (spec.width / 2) * 0.9;
+          const body = new THREE.Mesh(
+            linear
+              ? new THREE.BoxGeometry(spec.width, 0.07, 0.095)
+              : new THREE.CylinderGeometry(radius * 0.85, radius, 0.15, 20),
+            material,
+          );
+          body.position.y =
+            project.roomH - (linear ? 0.11 : 0.16) + (recessed ? 0.05 : 0);
+          const lens = new THREE.Mesh(
+            linear
+              ? new THREE.PlaneGeometry(spec.width * 0.9, 0.07)
+              : new THREE.CircleGeometry(radius * 0.76, 20),
+            new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+          );
+          lens.rotation.x = Math.PI / 2;
+          lens.position.y =
+            project.roomH - (linear ? 0.15 : 0.24) + (recessed ? 0.05 : 0);
+          unit.add(body, lens);
+          group.add(unit);
+          fixtures.set(fixture.id, unit);
+        }
+        cached = { signature, group, rails, fixtures };
+        content.tracks.set(track.id, cached);
+        content.group.add(group);
+      }
+      cached.group.position.set(track.x, 0, track.z);
+      const segments = trackSegments(track, catalog.layouts);
+      for (const segment of segments) {
+        const rail = cached.rails.get(segment.id);
+        if (!rail) continue;
+        rail.scale.x = segment.length;
+        rail.position.x = (segment.x1 + segment.x2) / 2;
+        rail.position.z = (segment.z1 + segment.z2) / 2;
+        rail.rotation.y = -Math.atan2(
+          segment.z2 - segment.z1,
+          segment.x2 - segment.x1,
+        );
+      }
+      for (const fixture of track.fixtures) {
+        const segment = segments.find(
+          (segment) => segment.id === (fixture.segmentId ?? "main"),
+        );
+        if (!segment) continue;
+        const point = fixturePoint(segment, fixture.t);
+        const unit = cached.fixtures.get(fixture.id);
+        if (unit) {
+          unit.position.set(point.x, 0, point.z);
+          unit.rotation.y = -Math.atan2(
+            segment.z2 - segment.z1,
+            segment.x2 - segment.x1,
+          );
+        }
+        const spec = catalog.fixtures.find((item) => item.id === fixture.type);
+        if (spec)
+          lightSources.push({
+            x: track.x + point.x,
+            z: track.z + point.z,
+            beam: spec.beam,
+            intensity: spec.shape === "line" ? 27 : 40,
+          });
+      }
+    }
+    const count = Math.min(4, lightSources.length);
+    content.lights.forEach((spot, index) => {
+      if (index >= count) {
+        spot.intensity = 0;
+        return;
+      }
+      const source =
+        lightSources[
+          count === 1
+            ? 0
+            : Math.round((index * (lightSources.length - 1)) / (count - 1))
+        ];
+      spot.position.set(source.x, project.roomH - 0.22, source.z);
+      spot.target.position.set(source.x, 0, source.z);
+      spot.color.copy(color);
+      spot.intensity = (source.intensity * project.brightness) / 100;
+      spot.distance = project.roomH * 1.8;
+      spot.angle = THREE.MathUtils.degToRad(source.beam / 2);
+      spot.penumbra = 0.75;
+      spot.decay = 1;
+    });
+    content.group.traverse((node) => {
+      if (
+        node instanceof THREE.Mesh &&
+        node.material instanceof THREE.MeshBasicMaterial
+      )
+        node.material.color.copy(color);
+    });
     renderRef.current?.();
   }, [
-    project.fixtures,
+    project.tracks,
     project.roomW,
     project.roomD,
     project.roomH,
-    project.trackX,
-    project.trackZ,
-    project.trackL,
-    project.mount,
-    project.color,
+    project.kelvin,
+    project.brightness,
     catalog,
   ]);
-  useEffect(() => {
-    const color = lightColor(project.kelvin);
-    for (const { spot, lens, baseIntensity } of lampsRef.current) {
-      spot.color.copy(color);
-      spot.intensity = (baseIntensity * project.brightness) / 100;
-      lens.material.color.copy(color);
-    }
-    renderRef.current?.();
-  }, [project.kelvin, project.brightness]);
   return <div id="three-view" ref={hostRef} />;
 }
