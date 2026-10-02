@@ -6,6 +6,8 @@ dist/
 *.log
 debug-*.png
 preview*.png
+!preview.png
+!preview-3d.png
 .DS_Store
 .vite/
 build-server/
