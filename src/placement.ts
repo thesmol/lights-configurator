@@ -47,26 +47,24 @@ export function findFreePosition(
   return best;
 }
 
-export function constrainFixturePosition(
+export function moveFixture(
   fixtures: FixturePlacement[],
   trackL: number,
   id: number,
   desired: number,
-): number {
+): FixturePlacement[] {
   const current = fixtures.find((fixture) => fixture.id === id);
-  if (!current) return desired;
-  const sorted = [...fixtures].sort((a, b) => a.t - b.t);
-  const index = sorted.findIndex((fixture) => fixture.id === id);
-  const before = sorted[index - 1];
-  const after = sorted[index + 1];
-  const half = widths[current.type] / 2;
-  const min = before
-    ? before.t + (widths[before.type] / 2 + gap + half) / trackL
-    : (edge + half) / trackL;
-  const max = after
-    ? after.t - (widths[after.type] / 2 + gap + half) / trackL
-    : 1 - (edge + half) / trackL;
-  return Math.min(max, Math.max(min, desired));
+  if (!current) return fixtures;
+  const t = findFreePosition(
+    fixtures.filter((fixture) => fixture.id !== id),
+    trackL,
+    current.type,
+    desired,
+  );
+  if (t === null) return fixtures;
+  return fixtures.map((fixture) =>
+    fixture.id === id ? { ...fixture, t } : fixture,
+  );
 }
 
 export function placeFixtures(

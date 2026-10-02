@@ -49,3 +49,8 @@ test("saved project is bounded before it reaches the 3D scene", () => {
   assert.equal(project.fixtures[0].t, 0.9375);
   assert.equal(project.selected, 1);
 });
+
+test("saved project keeps an explicitly cleared selection", () => {
+  const project = normalizeProject({ ...DEFAULT_PROJECT, selected: null });
+  assert.equal(project?.selected, null);
+});

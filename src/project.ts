@@ -70,9 +70,12 @@ export function normalizeProject(value: unknown): Project | null {
     kelvin: Math.round(number(raw.kelvin, 3000, 2700, 5000) / 100) * 100,
     brightness: Math.round(number(raw.brightness, 85, 10, 100) / 5) * 5,
     fixtures: placed,
-    selected: placed.some((fixture) => fixture.id === selected)
-      ? selected
-      : (placed[0]?.id ?? null),
+    selected:
+      raw.selected === null
+        ? null
+        : placed.some((fixture) => fixture.id === selected)
+          ? selected
+          : (placed[0]?.id ?? null),
     view: raw.view === "plan" ? "plan" : "3d",
   };
 }

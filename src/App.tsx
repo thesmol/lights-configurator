@@ -30,8 +30,10 @@ const SectionHead = ({
   title: string;
   subtitle: string;
 }) => (
-  <div className="section-head">
-    <span className="section-number">{number}</span>
+  <div className="section-head mb-[17px] flex items-start gap-[11px]">
+    <span className="section-number grid size-[27px] shrink-0 place-items-center rounded-full border border-[#c7d6b8] text-[10px] font-extrabold text-[#728f5c]">
+      {number}
+    </span>
     <div>
       <h2>{title}</h2>
       <p>{subtitle}</p>
@@ -63,7 +65,7 @@ function NumberField({
     if (next !== value) onChange(next);
   };
   return (
-    <label className="number-field">
+    <label className="number-field min-w-0 rounded-md border border-[#e5eae1] px-[9px] py-2">
       <span>{label}</span>
       <div>
         <input
@@ -207,7 +209,40 @@ export default function App() {
         selected: p.selected === id ? (fixtures[0]?.id ?? null) : p.selected,
       };
     });
+  useEffect(() => {
+    const selected = project.selected;
+    if (project.view !== "plan" || selected === null) return;
+    const removeOnKey = (event: KeyboardEvent) => {
+      if (event.key !== "Backspace" && event.key !== "Delete") return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      )
+        return;
+      event.preventDefault();
+      removeFixture(selected);
+    };
+    window.addEventListener("keydown", removeOnKey);
+    return () => window.removeEventListener("keydown", removeOnKey);
+  }, [project.view, project.selected]);
+  useEffect(() => {
+    if (project.view !== "plan" || project.selected === null) return;
+    const clearSelection = (event: globalThis.PointerEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".plan-fixture")
+      )
+        return;
+      setProject((current) => ({ ...current, selected: null }));
+    };
+    document.addEventListener("pointerdown", clearSelection);
+    return () => document.removeEventListener("pointerdown", clearSelection);
+  }, [project.view, project.selected]);
   const product = (id: string) => catalog?.fixtures.find((x) => x.id === id);
+  const fixturesInTrackOrder = [...project.fixtures].sort((a, b) => a.t - b.t);
   const flash = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(""), 2800);
@@ -267,13 +302,15 @@ export default function App() {
   };
   return (
     <>
-      <header className="topbar">
-        <div className="project-title">
+      <header className="topbar flex h-20 items-center justify-between border-b border-[#e7e9e3] bg-white px-8 max-[650px]:h-16 max-[650px]:px-4">
+        <div className="project-title flex min-w-[250px] flex-col gap-1 max-[650px]:min-w-0">
           <strong>Конфигуратор освещения</strong>
           <small>ПРОТОТИП · ТРЕКОВАЯ СИСТЕМА</small>
         </div>
-        <div className="top-center">ПРОЕКТ ВАШЕЙ КОМНАТЫ</div>
-        <div className="header-actions">
+        <div className="top-center text-[10px] font-extrabold tracking-[.17em] text-[#8a948a] max-[1150px]:hidden">
+          ПРОЕКТ ВАШЕЙ КОМНАТЫ
+        </div>
+        <div className="header-actions flex gap-3.5 max-[650px]:gap-[3px]">
           <button
             className="text-btn"
             onClick={() => {
@@ -298,26 +335,28 @@ export default function App() {
           </button>
         </div>
       </header>
-      <main className="app-shell">
-        <aside className="sidebar">
-          <div className="sidebar-scroll">
-            <div className="eyebrow">01 / ПАРАМЕТРЫ ПРОЕКТА</div>
+      <main className="app-shell grid h-[calc(100vh-80px)] min-h-[680px] grid-cols-[340px_minmax(400px,1fr)_300px] max-[1150px]:grid-cols-[285px_minmax(300px,1fr)_260px] max-[900px]:h-auto max-[900px]:grid-cols-[1fr_280px] max-[650px]:block">
+        <aside className="sidebar overflow-auto border-r border-[#e8ebe5] bg-white max-[900px]:col-span-2 max-[900px]:overflow-visible">
+          <div className="sidebar-scroll px-7 pt-[30px] pb-[42px] max-[1150px]:px-5 max-[1150px]:py-[26px] max-[900px]:grid max-[900px]:grid-cols-2 max-[900px]:gap-x-[30px] max-[900px]:p-[25px] max-[650px]:block max-[650px]:p-[22px]">
+            <div className="eyebrow text-[10px] font-extrabold tracking-[.15em] text-[#879f71]">
+              01 / ПАРАМЕТРЫ ПРОЕКТА
+            </div>
             <h1>
               Настройте
               <br />
               <em>свой свет.</em>
             </h1>
-            <p className="intro">
+            <p className="intro mb-[26px] max-w-[260px] text-xs leading-[1.65] text-[#849087] max-[900px]:col-span-2 max-[900px]:mb-3">
               Спроектируйте систему под размеры вашей комнаты и сразу увидите
               результат.
             </p>
-            <section className="section">
+            <section className="section border-t border-[#e9ede6] pt-[21px] pb-[22px]">
               <SectionHead
                 number="01"
                 title="Помещение"
                 subtitle="Укажите размеры вашей комнаты"
               />
-              <div className="dimension-grid">
+              <div className="dimension-grid grid grid-cols-3 gap-2">
                 <NumberField
                   label="Ширина"
                   value={project.roomW}
@@ -341,14 +380,16 @@ export default function App() {
                 />
               </div>
             </section>
-            <section className="section">
+            <section className="section border-t border-[#e9ede6] pt-[21px] pb-[22px]">
               <SectionHead
                 number="02"
                 title="Трековая система"
                 subtitle="Настройте трек на потолке"
               />
-              <div className="color-label">Тип монтажа</div>
-              <div className="mount-options">
+              <div className="color-label mb-[10px] flex justify-between text-[11px] font-bold text-[#4c5b4f]">
+                Тип монтажа
+              </div>
+              <div className="mount-options mb-4 grid grid-cols-2 gap-2">
                 {(
                   catalog?.tracks ?? [
                     {
@@ -375,24 +416,28 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <div className="color-label">Цвет профиля</div>
-              <div className="color-options">
+              <div className="color-label mb-[10px] flex justify-between text-[11px] font-bold text-[#4c5b4f]">
+                Цвет профиля
+              </div>
+              <div className="color-options grid grid-cols-2 gap-2">
                 <button
                   className={`color-option ${project.color === "black" ? "active" : ""}`}
                   onClick={() => change({ color: "black" })}
                 >
-                  <span className="swatch black" /> Чёрный{" "}
-                  <span className="check">✓</span>
+                  <span className="swatch black size-[15px] rounded-full border border-[#d6ddd4]" />{" "}
+                  Чёрный{" "}
+                  <span className="check ml-auto hidden text-[#78995d]">✓</span>
                 </button>
                 <button
                   className={`color-option ${project.color === "white" ? "active" : ""}`}
                   onClick={() => change({ color: "white" })}
                 >
-                  <span className="swatch white" /> Белый{" "}
-                  <span className="check">✓</span>
+                  <span className="swatch white size-[15px] rounded-full border border-[#d6ddd4]" />{" "}
+                  Белый{" "}
+                  <span className="check ml-auto hidden text-[#78995d]">✓</span>
                 </button>
               </div>
-              <div className="track-length">
+              <div className="track-length mt-[17px]">
                 <label>
                   Длина трека <strong>{project.trackL.toFixed(1)} м</strong>
                 </label>
@@ -424,26 +469,26 @@ export default function App() {
                     })
                   }
                 />
-                <div className="range-ends">
+                <div className="range-ends mt-[5px] flex justify-between text-[10px] text-[#a5aea4]">
                   <span>0,8 м</span>
                   <span>{(project.roomW - 0.4).toFixed(1)} м</span>
                 </div>
               </div>
-              <p className="tip">
+              <p className="tip mt-4 border-l-2 border-[#abc196] bg-[#f5f7f2] px-[10px] py-2 text-[10px] leading-[1.5] text-[#9aa699]">
                 Перемещайте трек и светильники на плане потолка.
               </p>
             </section>
-            <section className="section fixtures-section">
+            <section className="section fixtures-section border-t border-[#e9ede6] pt-[21px] pb-[22px]">
               <SectionHead
                 number="03"
                 title="Светильники"
                 subtitle="Добавьте приборы на трек"
               />
-              <div className="catalog">
+              <div className="catalog grid gap-[7px]">
                 {catalog?.fixtures.map((item) => (
                   <button
                     key={item.id}
-                    className="product-card"
+                    className="product-card flex items-center gap-[9px] rounded-md border border-[#e8ece6] bg-white p-2 text-left text-[#263327] transition duration-150 hover:border-[#9db88c] hover:bg-[#fbfdf9] disabled:cursor-not-allowed disabled:border-[#e8ece6] disabled:bg-[#f1f3ef] disabled:opacity-[.42]"
                     onClick={() => addFixture(item.id)}
                     disabled={
                       project.fixtures.length >= 40 ||
@@ -454,31 +499,41 @@ export default function App() {
                         project.trackL + 1e-8
                     }
                   >
-                    <span className="product-symbol">{item.icon}</span>
-                    <span className="product-copy">
+                    <span className="product-symbol grid size-9 shrink-0 place-items-center rounded bg-[#eef1ea] text-[19px] text-[#344338]">
+                      {item.icon}
+                    </span>
+                    <span className="product-copy grid flex-1 gap-[3px]">
                       <strong>{item.name}</strong>
                       <small>
                         {item.type} · {item.watts} Вт
                       </small>
                     </span>
-                    <span className="product-price">{money(item.price)}</span>
-                    <span className="product-add">+</span>
+                    <span className="product-price text-[10px] font-bold">
+                      {money(item.price)}
+                    </span>
+                    <span className="product-add text-lg text-[#83a469]">
+                      +
+                    </span>
                   </button>
-                )) || <p className="empty-note">Загрузка каталога…</p>}
+                )) || (
+                  <p className="empty-note text-[11px] text-[#96a195]">
+                    Загрузка каталога…
+                  </p>
+                )}
               </div>
             </section>
-            <section className="section atmosphere">
+            <section className="section atmosphere border-t border-[#e9ede6] pt-[21px] pb-[22px]">
               <SectionHead
                 number="04"
                 title="Атмосфера"
                 subtitle="Оцените характер света"
               />
-              <div className="color-label">
+              <div className="color-label mb-[10px] flex justify-between text-[11px] font-bold text-[#4c5b4f]">
                 Температура света <strong>{project.kelvin} K</strong>
               </div>
               <input
                 id="kelvin"
-                className="warm-range"
+                className="warm-range accent-[#ce9e63]"
                 type="range"
                 min="2700"
                 max="5000"
@@ -486,11 +541,11 @@ export default function App() {
                 value={project.kelvin}
                 onChange={(e) => change({ kelvin: Number(e.target.value) })}
               />
-              <div className="range-ends">
+              <div className="range-ends mt-[5px] flex justify-between text-[10px] text-[#a5aea4]">
                 <span>Тёплый</span>
                 <span>Холодный</span>
               </div>
-              <div className="track-length">
+              <div className="track-length mt-[17px]">
                 <label>
                   Яркость <strong>{project.brightness}%</strong>
                 </label>
@@ -509,13 +564,15 @@ export default function App() {
             </section>
           </div>
         </aside>
-        <div className="workspace">
-          <div className="workspace-top">
+        <div className="workspace flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#e6e9e3] max-[900px]:min-h-[600px] max-[900px]:overflow-visible max-[650px]:min-h-[580px]">
+          <div className="workspace-top flex h-[92px] items-center justify-between bg-[#f3f5f0] px-[30px] pt-[25px] pb-[18px] max-[1150px]:p-5 max-[650px]:block max-[650px]:h-auto max-[650px]:p-[22px]">
             <div>
-              <div className="eyebrow">02 / ВАШЕ ПРОСТРАНСТВО</div>
+              <div className="eyebrow text-[10px] font-extrabold tracking-[.15em] text-[#879f71]">
+                02 / ВАШЕ ПРОСТРАНСТВО
+              </div>
               <h2>Посмотрите, как это выглядит</h2>
             </div>
-            <div className="view-switch">
+            <div className="view-switch flex gap-[2px] rounded-md bg-[#e8ece5] p-[3px]">
               <button
                 className={project.view === "3d" ? "active" : ""}
                 onClick={() => change({ view: "3d" })}
@@ -530,7 +587,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="canvas-wrap">
+          <div className="canvas-wrap relative min-h-0 flex-1 overflow-hidden max-[900px]:h-[500px] max-[900px]:shrink-0 max-[650px]:h-[410px]">
             {project.view === "3d" ? (
               <Room3D project={project} catalog={catalog} />
             ) : (
@@ -542,21 +599,22 @@ export default function App() {
                 />
               )
             )}
-            <div className="scene-badge">
-              <span className="live-dot" /> ПРЕДПРОСМОТР В РЕАЛЬНОМ ВРЕМЕНИ
+            <div className="scene-badge absolute top-[23px] left-[25px] z-2 rounded bg-[#fffefaed] px-3 py-[9px] text-[9px] font-extrabold tracking-[.1em] text-[#526453] shadow-[0_2px_12px_#34412f16] max-[650px]:top-3 max-[650px]:left-3 max-[650px]:text-[8px]">
+              <span className="live-dot mr-[7px] inline-block size-[6px] rounded-full bg-[#89b163]" />{" "}
+              ПРЕДПРОСМОТР В РЕАЛЬНОМ ВРЕМЕНИ
             </div>
-            <div className="scene-hint">
+            <div className="scene-hint absolute bottom-[18px] left-[25px] z-2 rounded bg-[#ffffff99] px-[10px] py-2 text-[10px] text-[#5d6d60] max-[650px]:bottom-[45px] max-[650px]:right-[10px] max-[650px]:left-[10px] max-[650px]:text-center">
               {project.view === "3d"
                 ? "Перетаскивайте, чтобы повернуть комнату · колесо — масштаб"
-                : "Перетаскивайте трек или светильники для настройки"}
+                : "Перетаскивайте трек и светильники · Delete/Backspace — удалить выбранный"}
             </div>
-            <div className="scene-corner">
+            <div className="scene-corner absolute right-[25px] bottom-[18px] z-2 rounded bg-[#ffffff99] px-[10px] py-2 text-[11px] font-extrabold text-[#3e5540] max-[650px]:right-[10px] max-[650px]:bottom-[10px]">
               {project.roomW.toFixed(1)} × {project.roomD.toFixed(1)} м{" "}
               <span>·</span> h {project.roomH.toFixed(1)} м
             </div>
           </div>
-          <div className="workspace-bottom">
-            <div className="metric">
+          <div className="workspace-bottom grid h-[95px] grid-cols-[1fr_1.2fr_1.2fr_1.6fr] border-t border-[#e3e8df] bg-white max-[1150px]:grid-cols-3 max-[650px]:h-20">
+            <div className="metric border-r border-[#edf0eb] px-[18px] pt-[22px] pb-[17px] max-[1150px]:px-[10px] max-[1150px]:py-[18px]">
               <span>СВЕТИЛЬНИКИ</span>
               <strong>
                 {String(
@@ -564,13 +622,13 @@ export default function App() {
                 ).padStart(2, "0")}
               </strong>
             </div>
-            <div className="metric">
+            <div className="metric border-r border-[#edf0eb] px-[18px] pt-[22px] pb-[17px] max-[1150px]:px-[10px] max-[1150px]:py-[18px]">
               <span>СУММАРНАЯ МОЩНОСТЬ</span>
               <strong>
                 {quote?.watts ?? "—"} <small>Вт</small>
               </strong>
             </div>
-            <div className="metric">
+            <div className="metric border-r border-[#edf0eb] px-[18px] pt-[22px] pb-[17px] max-[1150px]:px-[10px] max-[1150px]:py-[18px]">
               <span>СВЕТОВОЙ ПОТОК</span>
               <strong>
                 {quote
@@ -579,29 +637,31 @@ export default function App() {
                 <small>лм</small>
               </strong>
             </div>
-            <div className="metric note">
+            <div className="metric note border-r border-[#edf0eb] px-[18px] pt-[22px] pb-[17px] max-[1150px]:px-[10px] max-[1150px]:py-[18px]">
               <span>ВАЖНО</span>
               <p>Свет в 3D — иллюстрация, не инженерный расчёт освещённости.</p>
             </div>
           </div>
         </div>
-        <aside className="summary">
-          <div className="eyebrow">03 / РЕЗУЛЬТАТ</div>
+        <aside className="summary flex min-h-0 flex-col overflow-hidden border-l border-[#e5e9e2] bg-white px-[22px] py-[30px] max-[900px]:min-h-[600px] max-[650px]:min-h-0 max-[650px]:px-[22px] max-[650px]:py-[25px]">
+          <div className="eyebrow text-[10px] font-extrabold tracking-[.15em] text-[#879f71]">
+            03 / РЕЗУЛЬТАТ
+          </div>
           <h2>Ваш проект</h2>
           <p className="summary-sub">
             {pagesDemo
               ? "Демоданные · расчёт в браузере"
               : "Комплектация рассчитывается сервером"}
           </p>
-          <div className="summary-visual">
-            <div className="summary-line" />
+          <div className="summary-visual relative my-[24px] flex h-[100px] shrink-0 items-center rounded-md bg-[#edf0ea]">
+            <div className="summary-line absolute right-[12%] left-[12%] h-2 rounded bg-[#28302a]" />
             {project.fixtures.map((f) => (
               <span key={f.id} style={{ left: `${12 + f.t * 76}%` }}>
                 {product(f.type)?.icon || "◉"}
               </span>
             ))}
           </div>
-          <div className="summary-heading">
+          <div className="summary-heading flex justify-between border-b border-[#e9ede6] pb-3 text-[10px] font-extrabold tracking-[.1em]">
             СПЕЦИФИКАЦИЯ{" "}
             <span>
               {quote
@@ -611,12 +671,15 @@ export default function App() {
               поз.
             </span>
           </div>
-          <div className="summary-list">
+          <div className="summary-list mb-6 min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable]">
             {quote?.items
               .filter((item) => !product(item.id))
               .map((item) => (
-                <div className="spec-row" key={item.id}>
-                  <span className="spec-icon">
+                <div
+                  className="spec-row flex items-center gap-[10px] border-b border-[#eff1ed] py-[13px]"
+                  key={item.id}
+                >
+                  <span className="spec-icon grid size-[30px] shrink-0 place-items-center rounded bg-[#edf1e9] text-[#526b51]">
                     {item.id === "power" ? "⌁" : "━"}
                   </span>
                   <div>
@@ -626,11 +689,16 @@ export default function App() {
                   <b>×{item.quantity}</b>
                 </div>
               ))}
-            {project.fixtures.map((fixture, index) => {
+            {fixturesInTrackOrder.map((fixture, index) => {
               const item = product(fixture.type);
               return (
-                <div className="spec-row" key={`fixture-${fixture.id}`}>
-                  <span className="spec-icon">{item?.icon ?? "◉"}</span>
+                <div
+                  className="spec-row flex items-center gap-[10px] border-b border-[#eff1ed] py-[13px]"
+                  key={`fixture-${fixture.id}`}
+                >
+                  <span className="spec-icon grid size-[30px] shrink-0 place-items-center rounded bg-[#edf1e9] text-[#526b51]">
+                    {item?.icon ?? "◉"}
+                  </span>
                   <div>
                     <strong>
                       {item?.name ?? fixture.type} #{index + 1}
@@ -640,7 +708,7 @@ export default function App() {
                     </small>
                   </div>
                   <button
-                    className="spec-remove"
+                    className="spec-remove size-7 shrink-0 rounded border border-[#e1e8de] bg-white text-lg text-[#9aa99b] hover:border-[#d6aaa5] hover:text-[#a24a42]"
                     type="button"
                     aria-label={`Удалить ${item?.name ?? "светильник"} №${index + 1}`}
                     onClick={() => removeFixture(fixture.id)}
@@ -651,12 +719,12 @@ export default function App() {
               );
             })}
           </div>
-          <div className="summary-total">
+          <div className="summary-total mt-auto border-t border-[#e8ece6] pt-5 max-[650px]:mt-[30px]">
             <span>Предварительная стоимость</span>
             <strong>{quote ? money(quote.total) : "—"}</strong>
             <small>Демонстрационные цены. Не является офертой.</small>
             <button
-              className="primary-btn"
+              className="primary-btn flex w-full items-center justify-between rounded-md bg-[#8aa665] p-[15px] text-[11px] font-extrabold text-white hover:bg-[#769452]"
               disabled={!quote}
               onClick={download}
             >

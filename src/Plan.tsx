@@ -7,7 +7,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { Catalog, Project } from "../shared";
-import { constrainFixturePosition } from "./placement";
+import { moveFixture } from "./placement";
 type Drag =
   | { kind: "fixture"; id: number }
   | { kind: "rail"; startX: number; startY: number; x: number; z: number };
@@ -62,6 +62,7 @@ export default function Plan({ project, catalog, setProject }: PlanProps) {
       rail = target?.closest(".rail-hit");
     if (!fixture && !rail) return;
     e.preventDefault();
+    e.currentTarget.focus();
     drag.current = fixture
       ? { kind: "fixture", id: Number(fixture.dataset.id) }
       : {
@@ -87,19 +88,7 @@ export default function Plan({ project, catalog, setProject }: PlanProps) {
       );
       setProject((p) => ({
         ...p,
-        fixtures: p.fixtures.map((f) =>
-          f.id === active.id
-            ? {
-                ...f,
-                t: constrainFixturePosition(
-                  p.fixtures,
-                  p.trackL,
-                  active.id,
-                  desired,
-                ),
-              }
-            : f,
-        ),
+        fixtures: moveFixture(p.fixtures, p.trackL, active.id, desired),
       }));
     } else {
       const nextX = clamp(
@@ -118,6 +107,7 @@ export default function Plan({ project, catalog, setProject }: PlanProps) {
   return (
     <div id="plan-view" ref={host}>
       <svg
+        tabIndex={0}
         width="100%"
         height="100%"
         viewBox={`0 0 ${width} ${height}`}

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { FixturePlacement } from "../shared";
 import {
-  constrainFixturePosition,
   findFreePosition,
   minimumTrackLength,
+  moveFixture,
   placeFixtures,
 } from "../src/placement";
 
@@ -24,11 +24,16 @@ test("addition respects fixture widths and track capacity", () => {
   );
 });
 
-test("dragging stops at the neighboring fixture", () => {
+test("dragging crosses neighbors and snaps outside their occupied space", () => {
   const fixtures: FixturePlacement[] = [
     { id: 1, type: "spot", t: 0.25 },
     { id: 2, type: "line", t: 0.6 },
   ];
-  const position = constrainFixturePosition(fixtures, 2, 1, 0.95);
-  assert.ok(Math.abs(position - (0.6 - (0.08 + 0.08 + 0.19) / 2)) < 1e-8);
+  const moved = moveFixture(fixtures, 2, 1, 0.95);
+  assert.ok(moved[0].t > moved[1].t);
+  const ontoNeighbor = moveFixture(fixtures, 2, 1, 0.6);
+  assert.ok(
+    Math.abs(ontoNeighbor[0].t - ontoNeighbor[1].t) >=
+      (0.16 / 2 + 0.38 / 2 + 0.08) / 2 - 1e-8,
+  );
 });

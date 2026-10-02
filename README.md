@@ -6,7 +6,7 @@
 
 ## Стек и запуск
 
-- TypeScript, React 19 + Vite — интерфейс.
+- TypeScript, React 19 + Vite и Tailwind CSS — интерфейс.
 - Three.js — 3D-комната и иллюстрация света.
 - Node.js HTTP API — каталог и серверный расчёт спецификации и цен.
 
