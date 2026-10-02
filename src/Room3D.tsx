@@ -16,30 +16,30 @@ function seeded(seed: number) {
     return value / 4294967296;
   };
 }
-function texture(kind: "wood" | "wall" | "rug") {
+function texture(kind: "wood" | "wall") {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 512;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D is unavailable");
-  const random = seeded(kind === "wood" ? 17 : kind === "wall" ? 29 : 41);
+  const random = seeded(kind === "wood" ? 17 : 29);
   if (kind === "wood") {
-    ctx.fillStyle = "#a99a86";
+    ctx.fillStyle = "#aa9882";
     ctx.fillRect(0, 0, 512, 512);
-    for (let row = 0; row < 8; row++) {
-      const y = row * 64;
-      ctx.fillStyle =
-        row % 3 === 0 ? "#ad9d88" : row % 3 === 1 ? "#a49480" : "#aa9984";
-      ctx.fillRect(0, y + 1, 512, 62);
-      ctx.strokeStyle = "rgba(61,51,42,.27)";
-      ctx.lineWidth = 2;
+    for (let row = 0; row < 16; row++) {
+      const y = row * 32;
+      const tone = 149 + Math.floor(random() * 5);
+      ctx.fillStyle = `rgb(${tone + 17},${tone},${tone - 20})`;
+      ctx.fillRect(0, y + 1, 512, 31);
+      ctx.strokeStyle = "rgba(61,51,42,.13)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(512, y);
       ctx.stroke();
-      for (let j = 0; j < 28; j++) {
-        const yy = y + 5 + random() * 53;
-        ctx.strokeStyle = `rgba(65,50,37,${0.025 + random() * 0.07})`;
-        ctx.lineWidth = 0.5 + random() * 1.3;
+      for (let j = 0; j < 18; j++) {
+        const yy = y + 3 + random() * 26;
+        ctx.strokeStyle = `rgba(65,50,37,${0.015 + random() * 0.025})`;
+        ctx.lineWidth = 0.5 + random() * 0.5;
         ctx.beginPath();
         ctx.moveTo(random() * 60, yy);
         ctx.bezierCurveTo(
@@ -53,27 +53,19 @@ function texture(kind: "wood" | "wall" | "rug") {
         ctx.stroke();
       }
       const seam = row % 2 ? 170 : 345;
-      ctx.strokeStyle = "rgba(60,50,42,.2)";
+      ctx.strokeStyle = "rgba(60,50,42,.1)";
       ctx.beginPath();
       ctx.moveTo(seam, y);
-      ctx.lineTo(seam, y + 64);
+      ctx.lineTo(seam, y + 32);
       ctx.stroke();
     }
   } else {
-    ctx.fillStyle = kind === "wall" ? "#c1c6bd" : "#ab9b86";
+    ctx.fillStyle = "#c1c6bd";
     ctx.fillRect(0, 0, 512, 512);
     for (let i = 0; i < 12000; i++) {
       const v = Math.floor(random() * 255);
-      ctx.fillStyle =
-        kind === "wall"
-          ? `rgba(${v},${v},${v},.018)`
-          : `rgba(77,64,50,${0.015 + random() * 0.035})`;
-      ctx.fillRect(
-        random() * 512,
-        random() * 512,
-        kind === "wall" ? 2 : 4,
-        kind === "wall" ? 2 : 1,
-      );
+      ctx.fillStyle = `rgba(${v},${v},${v},.018)`;
+      ctx.fillRect(random() * 512, random() * 512, 2, 2);
     }
   }
   const map = new THREE.CanvasTexture(canvas);
@@ -83,8 +75,7 @@ function texture(kind: "wood" | "wall" | "rug") {
   return map;
 }
 const woodMap = texture("wood"),
-  wallMap = texture("wall"),
-  rugMap = texture("rug");
+  wallMap = texture("wall");
 
 export default function Room3D({
   project,
@@ -173,8 +164,8 @@ export default function Room3D({
     };
     // Cutaway room: textured materials, architectural trim, and a few scale cues.
     woodMap.repeat.set(
-      Math.max(1, project.roomW / 2.2),
-      Math.max(1, project.roomD / 2.2),
+      Math.max(1, Math.round(project.roomW / 2.2)),
+      Math.max(1, Math.round(project.roomD / 2.2)),
     );
     const floorMat = new THREE.MeshStandardMaterial({
       map: woodMap,
@@ -319,23 +310,6 @@ export default function Room3D({
         darkWood,
       );
     }
-    rugMap.repeat.set(2, 1);
-    const rug = new THREE.Mesh(
-      new THREE.PlaneGeometry(
-        Math.min(2.8, project.roomW * 0.62),
-        Math.min(1.7, project.roomD * 0.5),
-      ),
-      new THREE.MeshStandardMaterial({
-        map: rugMap,
-        color: "#d7cdc0",
-        roughness: 1,
-        side: THREE.DoubleSide,
-      }),
-    );
-    rug.rotation.x = -Math.PI / 2;
-    rug.position.set(0.17, 0.014, project.roomD * 0.16);
-    rug.receiveShadow = true;
-    scene.add(rug);
     const tableX = Math.min(0.72, project.roomW * 0.15),
       tableZ = project.roomD * 0.16;
     const tableMat = new THREE.MeshStandardMaterial({
@@ -421,7 +395,7 @@ export default function Room3D({
       metalness: 0.35,
       roughness: 0.38,
     });
-    box(
+    const rail = box(
       project.trackL,
       project.mount === "surface" ? 0.07 : 0.025,
       0.075,
@@ -430,6 +404,7 @@ export default function Room3D({
       project.trackZ,
       railMat,
     );
+    rail.castShadow = false;
     const fixtureGroup = new THREE.Group();
     scene.add(fixtureGroup);
     fixtureSceneRef.current = { group: fixtureGroup, railMat };
@@ -533,6 +508,7 @@ export default function Room3D({
       const spec = catalog.fixtures.find((x) => x.id === f.type);
       if (!spec) continue;
       const x = project.trackX + (f.t - 0.5) * project.trackL;
+      const mountOffset = project.mount === "recessed" ? 0.05 : 0;
       const mesh =
         f.type === "line"
           ? new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.07, 0.095), railMat)
@@ -547,10 +523,10 @@ export default function Room3D({
             );
       mesh.position.set(
         x,
-        project.roomH - (f.type === "line" ? 0.11 : 0.16),
+        project.roomH - (f.type === "line" ? 0.11 : 0.16) + mountOffset,
         project.trackZ,
       );
-      mesh.castShadow = true;
+      mesh.castShadow = false;
       group.add(mesh);
       const lens = new THREE.Mesh(
         new THREE.CircleGeometry(f.type === "line" ? 0.16 : 0.057, 20),
@@ -559,7 +535,7 @@ export default function Room3D({
       lens.rotation.x = Math.PI / 2;
       lens.position.set(
         x,
-        project.roomH - (f.type === "line" ? 0.155 : 0.24),
+        project.roomH - (f.type === "line" ? 0.155 : 0.24) + mountOffset,
         project.trackZ,
       );
       group.add(lens);
@@ -573,7 +549,7 @@ export default function Room3D({
         0.75,
         1,
       );
-      spot.position.set(x, project.roomH - 0.22, project.trackZ);
+      spot.position.set(x, project.roomH - 0.22 + mountOffset, project.trackZ);
       spot.target.position.set(x, 0, project.trackZ);
       spot.castShadow = false;
       group.add(spot, spot.target);
