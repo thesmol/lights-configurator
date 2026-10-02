@@ -1,5 +1,7 @@
 # Прототип конфигуратора освещения
 
+[Live demo on GitHub Pages](https://thesmol.github.io/lights-configurator/)
+
 Десктопный прототип с ограниченным демонстрационным каталогом: два типа трека, два цвета и три типа светильников. Пользователь задаёт размеры комнаты, длину трека, расставляет светильники на плане, смотрит 3D-предпросмотр, меняет температуру и яркость, скачивает спецификацию. Положение элементов и настройки сохраняются в localStorage; проект можно скачать в JSON и открыть на другом компьютере.
 
 ## Стек и запуск
@@ -29,6 +31,6 @@ Vite покажет адрес приложения (обычно `http://localh
 
 ## Публикация на GitHub Pages
 
-Workflow `.github/workflows/pages.yml` собирает и публикует демоверсию при push в `main`. В GitHub откройте **Settings → Pages → Build and deployment → Source: GitHub Actions**. Адрес будет `https://<username>.github.io/<repository>/`.
+Workflow `.github/workflows/pages.yml` собирает и публикует демоверсию при push в `main`. В GitHub откройте **Settings → Pages → Build and deployment → Source: GitHub Actions**. [Открыть демоверсию](https://thesmol.github.io/lights-configurator/).
 
 GitHub Pages размещает только статические файлы. Поэтому workflow собирает версию с тем же демонстрационным каталогом и расчётом внутри клиентского бандла (`VITE_PAGES_DEMO=true`). Обычный локальный и серверный запуск по-прежнему получает каталог и цену через Node API. Для реальных динамических цен API понадобится отдельный хостинг; в Pages-версии они обновятся только после нового коммита и сборки.
