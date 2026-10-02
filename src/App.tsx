@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import CatalogDialog from "./CatalogDialog";
+import TrackCatalogDialog from "./TrackCatalogDialog";
 import ProjectSummary from "./ProjectSummary";
 import Room3D from "./Room3D";
 import Plan from "./Plan";
@@ -96,6 +98,7 @@ export default function App() {
   const error = catalogError || quoteError;
   const [toast, setToast] = useState("");
   const [choosingTrack, setChoosingTrack] = useState(false);
+  const [choosingFixture, setChoosingFixture] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const loadedRef = useRef(false);
   const [loaded, setLoaded] = useState(false);
@@ -146,7 +149,9 @@ export default function App() {
     setProject((current) => deleteFixture(current, trackId, id));
   useEffect(() => {
     const selected = project.selectedFixture;
-    if (project.view !== "plan" || !selected) return;
+    const selectedTrack = project.selectedTrackId;
+    if (project.view !== "plan" || (!selected && selectedTrack === null))
+      return;
     const removeOnKey = (event: KeyboardEvent) => {
       if (
         !["Backspace", "Delete"].includes(event.key) ||
@@ -163,16 +168,22 @@ export default function App() {
         return;
       event.preventDefault();
       setProject((current) =>
-        deleteFixture(current, selected.trackId, selected.id),
+        selected
+          ? deleteFixture(current, selected.trackId, selected.id)
+          : removeTrack(current, selectedTrack!),
       );
     };
     const clearSelection = (event: globalThis.PointerEvent) => {
       if (
         event.target instanceof Element &&
-        event.target.closest(".plan-fixture")
+        event.target.closest(".plan-fixture, .rail-hit, [data-track-select]")
       )
         return;
-      setProject((current) => ({ ...current, selectedFixture: null }));
+      setProject((current) => ({
+        ...current,
+        selectedFixture: null,
+        selectedTrackId: null,
+      }));
     };
     window.addEventListener("keydown", removeOnKey);
     document.addEventListener("pointerdown", clearSelection);
@@ -180,7 +191,7 @@ export default function App() {
       window.removeEventListener("keydown", removeOnKey);
       document.removeEventListener("pointerdown", clearSelection);
     };
-  }, [project.view, project.selectedFixture]);
+  }, [project.view, project.selectedFixture, project.selectedTrackId]);
   const flash = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(""), 2800);
@@ -353,11 +364,13 @@ export default function App() {
                 {project.tracks.map((track, index) => (
                   <button
                     key={track.id}
+                    data-track-select
                     aria-pressed={track.id === project.activeTrackId}
                     className={`rounded border p-2 text-left text-xs ${track.id === project.activeTrackId ? "border-[#8aaa69] bg-[#edf3e5]" : "border-[#e1e7db]"}`}
                     onClick={() =>
                       change({
                         activeTrackId: track.id,
+                        selectedTrackId: track.id,
                         activeSegmentId: "main",
                         selectedFixture: null,
                       })
@@ -390,6 +403,7 @@ export default function App() {
                           ...current,
                           tracks: [...current.tracks, track],
                           activeTrackId: track.id,
+                          selectedTrackId: track.id,
                           activeSegmentId: "main",
                           selectedFixture: null,
                         }
@@ -402,44 +416,45 @@ export default function App() {
               </button>
               {activeTrack && catalog && (
                 <>
-                  <button
-                    className="mb-3 flex w-full items-center justify-between rounded bg-[#f0f3ec] p-3 text-left text-xs"
-                    onClick={() => setChoosingTrack(!choosingTrack)}
-                    aria-expanded={choosingTrack}
-                  >
-                    <span>
-                      {catalog.tracks.find(
-                        (item) => item.id === activeTrack.productId,
-                      )?.name ?? activeTrack.productId}
+                  <div className="mb-4">
+                    <span className="mb-1 block text-[10px] text-[#889580]">
+                      Профиль трека
                     </span>
-                    <span className="ml-2 text-[#7e965f]">Изменить</span>
-                  </button>
+                    <button
+                      className="flex w-full items-center justify-between gap-3 border-b border-[#dce3d6] py-2 text-left text-xs hover:border-[#879f71]"
+                      onClick={() => setChoosingTrack(true)}
+                      aria-haspopup="dialog"
+                      aria-label="Выбрать профиль трека"
+                    >
+                      <strong className="min-w-0 truncate font-semibold">
+                        {catalog.tracks.find(
+                          (item) => item.id === activeTrack.productId,
+                        )?.name ?? activeTrack.productId}
+                      </strong>
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 16 16"
+                        className="size-4 shrink-0 text-[#869b74]"
+                      >
+                        <path
+                          d="m5 3 5 5-5 5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                   {choosingTrack && (
-                    <div className="mb-4">
-                      <CatalogPicker
-                        items={catalog.tracks}
-                        resource="tracks"
-                        label="Треки"
-                        category={(item) =>
-                          item.mount === "surface" ? "Накладные" : "Встроенные"
-                        }
-                        description={(item) => item.description}
-                        selectedId={activeTrack.productId}
-                        disabledReason={(item) =>
-                          item.layoutIds.includes(activeTrack.layoutId)
-                            ? null
-                            : "Профиль не поддерживает выбранную форму"
-                        }
-                        actionLabel="Выбрать"
-                        onPick={(item) => {
-                          editTrack((track) => ({
-                            ...track,
-                            productId: item.id,
-                          }));
-                          setChoosingTrack(false);
-                        }}
-                      />
-                    </div>
+                    <TrackCatalogDialog
+                      catalog={catalog}
+                      track={activeTrack}
+                      onClose={() => setChoosingTrack(false)}
+                      onPick={(id) => {
+                        editTrack((track) => ({ ...track, productId: id }));
+                        setChoosingTrack(false);
+                      }}
+                    />
                   )}
                   <div className="color-options mb-4 grid grid-cols-2 gap-2">
                     {(["black", "white"] as const).map((color) => (
@@ -467,14 +482,7 @@ export default function App() {
                         "Недостаточно места: проверьте размеры комнаты, соседние треки и светильники.",
                       )
                     }
-                    onSelectSegment={(id) =>
-                      change({ activeSegmentId: id, selectedFixture: null })
-                    }
                   />
-                  <p className="mt-3 text-[10px] text-[#8b9785]">
-                    Выберите трек здесь или на плане. Новые светильники
-                    добавляются на выбранный трек.
-                  </p>
                 </>
               )}
             </section>
@@ -484,35 +492,61 @@ export default function App() {
                 title="Светильники"
                 subtitle={
                   activeTrack
-                    ? `Трек ${project.tracks.indexOf(activeTrack) + 1} · ${catalog?.layouts.find((layout) => layout.id === activeTrack.layoutId)?.segments.find((segment) => segment.id === project.activeSegmentId)?.label ?? "Линия"}`
+                    ? `На трек ${project.tracks.indexOf(activeTrack) + 1} · добавьте и переместите на плане`
                     : "Сначала добавьте трек"
                 }
               />
               {catalog ? (
-                <CatalogPicker
-                  items={catalog.fixtures}
-                  resource="fixtures"
-                  label="Светильники"
-                  category={(item) => item.type}
-                  description={(item) => `${item.type} · ${item.watts} Вт`}
-                  preview={(item) => (
-                    <FixtureImage
-                      shape={item.shape}
-                      imageUrl={item.imageUrl}
-                      name={item.name}
-                      className="h-11 w-14"
-                    />
+                <>
+                  <button
+                    className="flex w-full items-center justify-between rounded-md border border-[#b5c5a6] bg-[#f5f8f0] px-4 py-3 text-xs font-semibold text-[#486039] hover:bg-[#eaf0e0] disabled:opacity-40"
+                    disabled={!activeTrack}
+                    onClick={() => setChoosingFixture(true)}
+                    aria-haspopup="dialog"
+                    aria-label="Открыть каталог светильников"
+                  >
+                    Добавить светильник <span className="text-lg">+</span>
+                  </button>
+                  {choosingFixture && (
+                    <CatalogDialog
+                      title="Выберите светильник"
+                      onClose={() => setChoosingFixture(false)}
+                    >
+                      <CatalogPicker
+                        items={catalog.fixtures}
+                        resource="fixtures"
+                        label="Светильники"
+                        category={(item) => item.type}
+                        description={(item) =>
+                          `${item.type} · ${item.watts} Вт`
+                        }
+                        preview={(item) => (
+                          <FixtureImage
+                            shape={item.shape}
+                            imageUrl={item.imageUrl}
+                            name={item.name}
+                            className="h-14 w-20"
+                          />
+                        )}
+                        actionLabel="Добавить"
+                        onPick={(item) => {
+                          setProject((current) =>
+                            addFixture(current, item.id, catalog),
+                          );
+                          setChoosingFixture(false);
+                        }}
+                        disabledReason={(item) =>
+                          cannotAddFixture(
+                            project,
+                            activeTrack,
+                            item.id,
+                            catalog,
+                          )
+                        }
+                      />
+                    </CatalogDialog>
                   )}
-                  actionLabel="Добавить"
-                  onPick={(item) =>
-                    setProject((current) =>
-                      addFixture(current, item.id, catalog),
-                    )
-                  }
-                  disabledReason={(item) =>
-                    cannotAddFixture(project, activeTrack, item.id, catalog)
-                  }
-                />
+                </>
               ) : (
                 <p className="text-xs text-[#8b9785]">
                   {error || "Загрузка каталога…"}
@@ -603,7 +637,7 @@ export default function App() {
             <div className="scene-hint absolute bottom-[18px] left-[25px] z-2 rounded bg-[#ffffff99] px-[10px] py-2 text-[10px] text-[#5d6d60] max-[650px]:bottom-[45px] max-[650px]:right-[10px] max-[650px]:left-[10px] max-[650px]:text-center">
               {project.view === "3d"
                 ? "Перетаскивайте, чтобы повернуть комнату · колесо — масштаб"
-                : "Перетаскивайте трек и светильники · Delete/Backspace — удалить выбранный"}
+                : "Перетаскивайте трек и светильники · Delete/Backspace — удалить выбранное"}
             </div>
             <div className="scene-corner absolute right-[25px] bottom-[18px] z-2 rounded bg-[#ffffff99] px-[10px] py-2 text-[11px] font-extrabold text-[#3e5540] max-[650px]:right-[10px] max-[650px]:bottom-[10px]">
               {project.roomW.toFixed(1)} × {project.roomD.toFixed(1)} м{" "}
@@ -645,6 +679,7 @@ export default function App() {
           onSelectTrack={(id) =>
             change({
               activeTrackId: id,
+              selectedTrackId: id,
               activeSegmentId: "main",
               selectedFixture: null,
             })

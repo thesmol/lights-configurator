@@ -78,7 +78,11 @@ export default function Plan({
     const fixture = target?.closest(".plan-fixture"),
       rail = target?.closest(".rail-hit");
     if (!fixture && !rail) {
-      setProject((current) => ({ ...current, selectedFixture: null }));
+      setProject((current) => ({
+        ...current,
+        selectedFixture: null,
+        selectedTrackId: null,
+      }));
       return;
     }
     const trackId = Number((fixture ?? rail)?.getAttribute("data-track-id"));
@@ -105,6 +109,7 @@ export default function Plan({
     setProject((current) => ({
       ...current,
       activeTrackId: trackId,
+      selectedTrackId: fixture ? null : trackId,
       activeSegmentId: segmentId,
       selectedFixture: fixture
         ? { trackId, id: Number(fixture.getAttribute("data-fixture-id")) }
@@ -265,8 +270,9 @@ export default function Plan({
               </text>
               {segments.map((segment) => {
                 const selected =
-                  project.activeTrackId === track.id &&
-                  project.activeSegmentId === segment.id;
+                  project.selectedTrackId === track.id ||
+                  (project.selectedFixture?.trackId === track.id &&
+                    project.activeSegmentId === segment.id);
                 const points = {
                   x1: cx + segment.x1 * scale,
                   x2: cx + segment.x2 * scale,

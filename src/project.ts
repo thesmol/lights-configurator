@@ -32,6 +32,7 @@ export const DEFAULT_PROJECT: Project = {
     },
   ],
   activeTrackId: 1,
+  selectedTrackId: null,
   activeSegmentId: "main",
   selectedFixture: { trackId: 1, id: 2 },
   kelvin: 3000,
@@ -188,6 +189,7 @@ export function normalizeProject(
     roomH,
     tracks,
     activeTrackId,
+    selectedTrackId: null,
     activeSegmentId:
       trackSegments(
         tracks.find((track) => track.id === activeTrackId) ??

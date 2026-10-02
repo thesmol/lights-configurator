@@ -96,3 +96,29 @@ test("fixtures belong to segments and remain after changing shape", () => {
   assert.equal(restored?.tracks[0].fixtures.length, 4);
   assert.equal(reshapeTrack(added, 1, { length: 11 }, catalog), null);
 });
+
+test("addition automatically uses another segment when the preferred one is full", () => {
+  const project = {
+    ...DEFAULT_PROJECT,
+    tracks: [
+      {
+        ...DEFAULT_PROJECT.tracks[0],
+        layoutId: "corner",
+        length: 2,
+        depth: 2,
+        fixtures: [0.22, 0.5, 0.78].map((t, index) => ({
+          id: index + 1,
+          type: "line",
+          segmentId: "main",
+          t,
+        })),
+      },
+    ],
+  };
+  const added = addFixture(project, "line", catalog);
+  assert.equal(added.tracks[0].fixtures.length, 4);
+  assert.equal(
+    added.tracks[0].fixtures.find((f) => f.id === 4)?.segmentId,
+    "side",
+  );
+});

@@ -150,6 +150,32 @@ export function reshapeTrack(
       : segments[0].id,
   };
 }
+function availableSegment(
+  project: Project,
+  track: TrackPlacement,
+  type: string,
+  catalog: Catalog,
+) {
+  return trackSegments(track, catalog.layouts)
+    .sort(
+      (a, b) =>
+        Number(b.id === project.activeSegmentId) -
+        Number(a.id === project.activeSegmentId),
+    )
+    .find(
+      (segment) =>
+        minimumTrackLength(
+          [
+            ...track.fixtures.filter(
+              (f) => (f.segmentId ?? "main") === segment.id,
+            ),
+            { id: -1, type, t: 0.5 },
+          ],
+          catalog.fixtures,
+        ) <=
+        usableLength(segment) + 1e-8,
+    );
+}
 export function cannotAddFixture(
   project: Project,
   track: TrackPlacement | undefined,
@@ -159,21 +185,8 @@ export function cannotAddFixture(
   if (!track) return "Сначала добавьте трек";
   if (fixtureCount(project) >= MAX_FIXTURES)
     return `Лимит проекта — ${MAX_FIXTURES} светильников`;
-  const segment = trackSegments(track, catalog.layouts).find(
-    (segment) => segment.id === project.activeSegmentId,
-  );
-  if (!segment) return "Выберите участок трека";
-  if (
-    minimumTrackLength(
-      [
-        ...track.fixtures.filter((f) => (f.segmentId ?? "main") === segment.id),
-        { id: -1, type, t: 0.5 },
-      ],
-      catalog.fixtures,
-    ) >
-    usableLength(segment) + 1e-8
-  )
-    return "На выбранном участке недостаточно места";
+  if (!availableSegment(project, track, type, catalog))
+    return "На треке недостаточно места";
   return null;
 }
 export function addFixture(
@@ -183,9 +196,7 @@ export function addFixture(
 ): Project {
   const track = project.tracks.find((t) => t.id === project.activeTrackId);
   if (!track || cannotAddFixture(project, track, type, catalog)) return project;
-  const segment = trackSegments(track, catalog.layouts).find(
-    (segment) => segment.id === project.activeSegmentId,
-  )!;
+  const segment = availableSegment(project, track, type, catalog)!;
   const currentFixtures = track.fixtures.filter(
     (f) => (f.segmentId ?? "main") === segment.id,
   );
@@ -217,6 +228,8 @@ export function addFixture(
   return {
     ...updateTrack(project, track.id, (t) => ({ ...t, fixtures })),
     selectedFixture: { trackId: track.id, id: fixture.id },
+    selectedTrackId: null,
+    activeSegmentId: segment.id,
   };
 }
 export function removeFixture(
@@ -241,6 +254,8 @@ export function removeTrack(project: Project, id: number): Project {
   return {
     ...project,
     tracks,
+    selectedTrackId:
+      project.selectedTrackId === id ? null : project.selectedTrackId,
     activeSegmentId:
       project.activeTrackId === id ? "main" : project.activeSegmentId,
     activeTrackId:

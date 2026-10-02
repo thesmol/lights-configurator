@@ -32,6 +32,7 @@ export interface Project {
   roomH: number;
   tracks: TrackPlacement[];
   activeTrackId: number | null;
+  selectedTrackId: number | null;
   activeSegmentId: string;
   selectedFixture: { trackId: number; id: number } | null;
   kelvin: number;

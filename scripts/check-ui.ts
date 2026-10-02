@@ -74,12 +74,32 @@ try {
   assert.equal(await page.locator(".rail-hit").count(), 3);
   assert.equal(await page.locator("#track-tail").count(), 1);
   await page
-    .getByRole("button", { name: "Нижний отрезок", exact: true })
+    .getByRole("button", { name: "Открыть каталог светильников" })
     .click();
   await page
     .getByRole("button", { name: "Добавить LINE 48", exact: true })
     .click();
   await waitQuote(page);
+  const added = await page
+    .locator('.plan-fixture[data-fixture-id="4"]')
+    .boundingBox();
+  assert.ok(added);
+  const destination = await page
+    .locator('.rail-hit[data-segment-id="bottom"]')
+    .evaluate((line) => {
+      const svg = (line as SVGElement).ownerSVGElement!.getBoundingClientRect();
+      return {
+        x:
+          svg.x +
+          (Number(line.getAttribute("x1")) + Number(line.getAttribute("x2"))) /
+            2,
+        y: svg.y + Number(line.getAttribute("y1")),
+      };
+    });
+  await page.mouse.move(added.x + added.width / 2, added.y + added.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(destination.x, destination.y, { steps: 10 });
+  await page.mouse.up();
   assert.equal(
     (await state(page)).tracks[0].fixtures.filter(
       (f) => f.segmentId === "bottom",
@@ -92,6 +112,9 @@ try {
     .click();
   await page
     .getByRole("button", { name: "Выбрать Встроенный трек 48V" })
+    .click();
+  await page
+    .getByRole("button", { name: "Открыть каталог светильников" })
     .click();
   await page
     .getByRole("button", { name: "Добавить SPOT 48", exact: true })
@@ -136,6 +159,44 @@ try {
     true,
   );
   await page.screenshot({ path: "/tmp/lights-multiple-3d.png" });
+  await page.getByRole("button", { name: "План потолка" }).click();
+  const selectTrack = async () => {
+    const point = await page
+      .locator('.rail-hit[data-track-id="2"]')
+      .evaluate((line) => {
+        const svg = (
+          line as SVGElement
+        ).ownerSVGElement!.getBoundingClientRect();
+        return {
+          x:
+            svg.x +
+            (Number(line.getAttribute("x1")) +
+              Number(line.getAttribute("x2"))) /
+              2,
+          y: svg.y + Number(line.getAttribute("y1")),
+        };
+      });
+    await page.mouse.click(point.x, point.y);
+  };
+  await selectTrack();
+  await page.locator("#track-length").focus();
+  await page.keyboard.press("Delete");
+  assert.equal((await state(page)).tracks.length, 2);
+  await selectTrack();
+  await page.keyboard.press("Backspace");
+  assert.equal((await state(page)).tracks.length, 1);
+  await page.keyboard.press("Delete");
+  assert.equal((await state(page)).tracks.length, 1);
+  assert.equal(
+    await page
+      .getByText("Участок для добавления света", { exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await page.getByText("Обязательная комплектация", { exact: true }).count(),
+    0,
+  );
   await page.close();
   console.log(
     "PASS: shape parameters, segment fixtures, multiple tracks, deletion, persistence, quote debounce, stable WebGL canvas",
@@ -189,12 +250,21 @@ try {
   });
   await catalogPage.goto(base);
   await waitQuote(catalogPage);
+  await catalogPage
+    .getByRole("button", { name: "Открыть каталог светильников" })
+    .click();
   const picker = catalogPage.locator(
     '.catalog-picker[aria-label="Светильники"]',
   );
   await picker.scrollIntoViewIfNeeded();
   await picker.locator('.catalog[aria-busy="false"]').waitFor();
   assert.equal(await picker.locator(".product-card").count(), 6);
+  assert.equal(
+    await picker
+      .locator('[aria-label="Фильтр: Светильники"]')
+      .evaluate((element) => element.scrollWidth > element.clientWidth),
+    false,
+  );
   const names = await picker.locator(".product-copy strong").allTextContents();
   await picker.getByRole("button", { name: "Далее" }).click();
   await picker.locator('.catalog[aria-busy="false"]').waitFor();
@@ -214,6 +284,9 @@ try {
       (f) => f.type === "fixture-119",
     ),
   );
+  await catalogPage
+    .getByRole("button", { name: "Открыть каталог светильников" })
+    .click();
   await picker.getByRole("searchbox").fill("");
   await picker.locator('.catalog[aria-busy="false"]').waitFor();
   await catalogPage.screenshot({ path: "/tmp/lights-large-catalog.png" });

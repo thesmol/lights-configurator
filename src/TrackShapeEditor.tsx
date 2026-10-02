@@ -39,14 +39,12 @@ export default function TrackShapeEditor({
   catalog,
   onChange,
   onReject,
-  onSelectSegment,
 }: {
   project: Project;
   track: TrackPlacement;
   catalog: Catalog;
   onChange: (project: Project) => void;
   onReject: () => void;
-  onSelectSegment: (id: string) => void;
 }) {
   const layout = catalog.layouts.find((layout) => layout.id === track.layoutId);
   const apply = (patch: Partial<TrackPlacement>) => {
@@ -57,7 +55,7 @@ export default function TrackShapeEditor({
   return (
     <div className="mb-5 grid gap-3">
       <div className="text-[11px] font-bold text-[#4c5b4f]">Форма трека</div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-3 gap-1.5">
         {catalog.layouts
           .filter((option) =>
             catalog.tracks
@@ -91,7 +89,7 @@ export default function TrackShapeEditor({
                     ? option.name
                     : "Не помещается в комнате или недостаточно места для приборов"
                 }
-                className={`grid place-items-center rounded border px-1 py-2 text-[9px] disabled:opacity-35 ${option.id === track.layoutId ? "border-[#8aaa69] bg-[#e9f0df]" : "border-[#e6eae1] bg-[#f6f8f2]"}`}
+                className={`grid min-h-[66px] min-w-0 place-items-center rounded border px-1 py-2 text-[10px] disabled:opacity-35 ${option.id === track.layoutId ? "border-[#8aaa69] bg-[#e9f0df]" : "border-[#e6eae1] bg-[#f6f8f2]"}`}
                 onClick={() => apply(patch)}
               >
                 <svg
@@ -111,7 +109,9 @@ export default function TrackShapeEditor({
                     />
                   ))}
                 </svg>
-                {option.name}
+                <span className="max-w-full text-center text-[9px] leading-tight [overflow-wrap:anywhere]">
+                  {option.name}
+                </span>
               </button>
             );
           })}
@@ -143,25 +143,6 @@ export default function TrackShapeEditor({
       <p className="text-[10px] text-[#829075]">
         Общая длина: {trackLength(track, catalog.layouts).toFixed(1)} м
       </p>
-      {layout && layout.segments.length > 1 && (
-        <div>
-          <div className="mb-2 text-[11px] font-bold text-[#4c5b4f]">
-            Участок для добавления света
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {layout.segments.map((segment) => (
-              <button
-                key={segment.id}
-                aria-pressed={project.activeSegmentId === segment.id}
-                className={`rounded px-2 py-1.5 text-[10px] ${project.activeSegmentId === segment.id ? "bg-[#dfe9d5]" : "bg-[#f2f4ed]"}`}
-                onClick={() => onSelectSegment(segment.id)}
-              >
-                {segment.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

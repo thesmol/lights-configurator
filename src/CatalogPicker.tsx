@@ -106,7 +106,7 @@ export default function CatalogPicker<T extends LightProduct | TrackProduct>({
       />
       {categories.length > 1 && (
         <div
-          className="flex gap-1 overflow-x-auto pb-1"
+          className="flex min-w-0 flex-wrap gap-1 pb-1"
           aria-label={`Фильтр: ${label}`}
         >
           {[["", "Все"], ...categories].map(([value, label]) => (
@@ -117,27 +117,29 @@ export default function CatalogPicker<T extends LightProduct | TrackProduct>({
                 setPage(0);
               }}
               aria-pressed={filter === value}
-              className={`shrink-0 rounded px-2 py-1 text-[10px] ${filter === value ? "bg-[#dfe9d5] text-[#344c2d]" : "bg-[#f0f3ed] text-[#74816e]"}`}
+              className={`max-w-full rounded px-2 py-1 text-[10px] [overflow-wrap:anywhere] ${filter === value ? "bg-[#dfe9d5] text-[#344c2d]" : "bg-[#f0f3ed] text-[#74816e]"}`}
             >
               {label}
             </button>
           ))}
         </div>
       )}
-      <div className="flex justify-between text-[10px] text-[#899581]">
-        <span>{result.total} моделей</span>
-        {pages > 1 && (
-          <span>
-            {currentPage + 1} / {pages}
-          </span>
-        )}
-      </div>
+      {items.length > PAGE_SIZE && (
+        <div className="flex justify-between text-[10px] text-[#899581]">
+          <span>{result.total} моделей</span>
+          {pages > 1 && (
+            <span>
+              {currentPage + 1} / {pages}
+            </span>
+          )}
+        </div>
+      )}
       {error && (
         <p role="alert" className="text-xs text-[#a24a42]">
           {error}
         </p>
       )}
-      <div className="catalog grid gap-2" aria-busy={loading}>
+      <div className="catalog grid gap-3 sm:grid-cols-2" aria-busy={loading}>
         {result.items.map((item) => {
           const reason =
             disabledReason?.(item) ??
@@ -156,11 +158,11 @@ export default function CatalogPicker<T extends LightProduct | TrackProduct>({
               onClick={() => onPick(item)}
             >
               {preview && (
-                <span className="grid h-12 w-14 shrink-0 place-items-center rounded bg-[#eef1ea]">
+                <span className="grid h-16 w-20 shrink-0 place-items-center rounded bg-[#eef1ea]">
                   {preview(item)}
                 </span>
               )}
-              <span className="product-copy grid min-w-0 flex-1 gap-1">
+              <span className="product-copy grid min-w-0 flex-1 gap-1.5">
                 <strong className="truncate">{item.name}</strong>
                 <small>{description(item)}</small>
                 <span className="text-[10px] font-bold">

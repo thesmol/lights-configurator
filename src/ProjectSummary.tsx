@@ -48,6 +48,7 @@ export default function ProjectSummary({
           <div key={track.id} className="border-b border-[#e1e8db] pb-2">
             <div className="flex items-center gap-2 py-3">
               <button
+                data-track-select
                 className="min-w-0 flex-1 text-left text-xs"
                 onClick={() => onSelectTrack(track.id)}
               >
@@ -125,25 +126,19 @@ export default function ProjectSummary({
                   </div>
                 );
               })}
-            <details
-              className="mt-2 rounded bg-[#f5f7f1] px-2 py-2 text-[10px] text-[#6e7d64]"
-              open
-            >
-              <summary className="cursor-pointer font-bold">
-                Обязательная комплектация
-              </summary>
+            <div className="mt-2 grid gap-2 rounded bg-[#f5f7f1] p-2 text-[10px] text-[#6e7d64]">
               {quote?.tracks
                 .find((item) => item.id === track.id)
                 ?.requirements.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-start justify-between gap-2 pt-2"
+                    className="flex items-start justify-between gap-2"
                   >
                     <span title={item.description}>{item.name}</span>
                     <b className="shrink-0">×{item.quantity}</b>
                   </div>
                 ))}
-            </details>
+            </div>
           </div>
         ))}
         {!project.tracks.length && (
