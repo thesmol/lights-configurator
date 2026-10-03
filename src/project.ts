@@ -5,7 +5,7 @@ import {
   type Project,
   type TrackPlacement,
 } from "../shared";
-import { fitFixturesToSegments } from "./projectActions";
+import { fitFixturesToSegments, newTrack } from "./projectActions";
 import { trackBounds, trackSegments } from "../domain/trackGeometry";
 
 export const DEFAULT_PROJECT: Project = {
@@ -205,19 +205,26 @@ export function normalizeProject(
 
 export function createDefaultProject(source: Catalog = catalog): Project {
   if (
-    source.tracks.some((item) => item.id === "surface") &&
+    source.tracks.some(
+      (item) => item.id === "surface" && item.layoutIds.includes("line"),
+    ) &&
+    source.layouts.some((item) => item.id === "line") &&
     ["spot", "wide"].every((id) =>
       source.fixtures.some((item) => item.id === id),
     )
   )
     return DEFAULT_PROJECT;
   const product = source.tracks[0];
+  const track = product
+    ? newTrack({ ...DEFAULT_PROJECT, tracks: [] }, product.id, source)
+    : null;
   return {
     ...DEFAULT_PROJECT,
-    tracks: product
-      ? [{ ...DEFAULT_PROJECT.tracks[0], productId: product.id, fixtures: [] }]
-      : [],
-    activeTrackId: product ? 1 : null,
+    tracks: track ? [track] : [],
+    activeTrackId: track?.id ?? null,
+    activeSegmentId: track
+      ? trackSegments(track, source.layouts)[0].id
+      : "main",
     selectedFixture: null,
   };
 }

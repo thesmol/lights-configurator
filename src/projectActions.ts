@@ -65,6 +65,11 @@ export function newTrack(
   catalog: Catalog = demoCatalog,
 ): TrackPlacement | null {
   if (project.tracks.length >= MAX_TRACKS) return null;
+  const product = catalog.tracks.find((item) => item.id === productId);
+  const layout = product?.layoutIds
+    .map((id) => catalog.layouts.find((item) => item.id === id))
+    .find((item) => item !== undefined);
+  if (!layout) return null;
   const track: TrackPlacement = {
     id: Math.max(0, ...project.tracks.map((t) => t.id)) + 1,
     productId,
@@ -74,10 +79,31 @@ export function newTrack(
     length: Math.min(2, project.roomW - 0.4),
     depth: 2,
     tail: 2,
-    layoutId: "line",
+    layoutId: layout.id,
     fixtures: [],
   };
-  const slots = Math.floor((project.roomD / 2 - 0.35) / 0.35);
+  for (const parameter of layout.parameters)
+    track[parameter.key] = parameter.default;
+  const initialBounds = trackBounds(track, catalog.layouts);
+  const factor = Math.min(
+    1,
+    (project.roomW - 0.4) / Math.max(0.01, initialBounds.width),
+    (project.roomD - 0.7) / Math.max(0.01, initialBounds.depth),
+  );
+  for (const parameter of layout.parameters)
+    track[parameter.key] = Math.min(
+      parameter.max,
+      Math.max(parameter.min, track[parameter.key] * factor),
+    );
+  const bounds = trackBounds(track, catalog.layouts);
+  if (
+    bounds.width > project.roomW - 0.4 + 1e-8 ||
+    bounds.depth > project.roomD - 0.7 + 1e-8
+  )
+    return null;
+  const slots = Math.floor(
+    ((project.roomD - bounds.depth) / 2 - 0.35 + 1e-8) / 0.35,
+  );
   for (let index = 0; index <= slots * 2; index++) {
     track.z = Math.ceil(index / 2) * 0.35 * (index % 2 ? 1 : -1);
     if (!project.tracks.some((other) => tracksOverlap(track, other, catalog)))

@@ -154,6 +154,7 @@ export default function App() {
       return;
     const removeOnKey = (event: KeyboardEvent) => {
       if (
+        document.querySelector("dialog[open]") ||
         !["Backspace", "Delete"].includes(event.key) ||
         event.altKey ||
         event.ctrlKey ||

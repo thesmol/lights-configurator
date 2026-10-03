@@ -34,6 +34,9 @@ try {
   await page.goto(base);
   await waitQuote(page);
   await page.getByRole("button", { name: "План потолка" }).click();
+  const beforeReselect = (await state(page)).tracks;
+  await page.getByRole("button", { name: "Форма: Линия", exact: true }).click();
+  assert.deepEqual((await state(page)).tracks, beforeReselect);
   const firstFixture = await page
     .locator('.plan-fixture[data-fixture-id="1"]')
     .boundingBox();
@@ -80,6 +83,10 @@ try {
     .getByRole("button", { name: "Добавить LINE 48", exact: true })
     .click();
   assert.equal(await page.getByRole("dialog").isVisible(), true);
+  const beforeModalKeys = (await state(page)).tracks;
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Delete");
+  assert.deepEqual((await state(page)).tracks, beforeModalKeys);
   await page
     .getByRole("button", { name: "Добавить LINE 48", exact: true })
     .click();

@@ -90,7 +90,9 @@ export default function TrackShapeEditor({
                     : "Не помещается в комнате или недостаточно места для приборов"
                 }
                 className={`grid min-h-[66px] min-w-0 place-items-center rounded border px-1 py-2 text-[10px] disabled:opacity-35 ${option.id === track.layoutId ? "border-[#8aaa69] bg-[#e9f0df]" : "border-[#e6eae1] bg-[#f6f8f2]"}`}
-                onClick={() => apply(patch)}
+                onClick={() => {
+                  if (option.id !== track.layoutId) apply(patch);
+                }}
               >
                 <svg
                   viewBox="0 0 48 36"

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { trackBounds } from "../domain/trackGeometry";
 import { catalog, quote, type Catalog } from "../shared";
-import { DEFAULT_PROJECT, normalizeProject } from "../src/project";
+import {
+  DEFAULT_PROJECT,
+  normalizeProject,
+  createDefaultProject,
+} from "../src/project";
 import {
   addFixture,
   newTrack,
@@ -153,4 +158,35 @@ test("new catalog IDs use product dimensions and prices without renderer ID chec
     result.items.find((item) => item.id === "long-bar-900")?.unitPrice,
     123,
   );
+});
+
+test("initial and added tracks use supported catalog layouts within room bounds", () => {
+  for (const layoutId of ["corner", "z", "rectangle"]) {
+    const source: Catalog = {
+      ...catalog,
+      tracks: [{ ...catalog.tracks[0], id: "surface", layoutIds: [layoutId] }],
+    };
+    const initial = createDefaultProject(source);
+    assert.equal(initial.tracks[0].layoutId, layoutId);
+    assert.doesNotThrow(() => quote(initial, source));
+    const smallRoom = { ...initial, roomW: 2, roomD: 2, tracks: [] };
+    const added = newTrack(smallRoom, "surface", source);
+    assert.ok(added);
+    assert.equal(added.layoutId, layoutId);
+    const bounds = trackBounds(added, source.layouts);
+    assert.ok(
+      bounds.width + 2 * Math.abs(added.x) <= smallRoom.roomW - 0.4 + 1e-8,
+    );
+    assert.ok(
+      bounds.depth + 2 * Math.abs(added.z) <= smallRoom.roomD - 0.7 + 1e-8,
+    );
+    assert.doesNotThrow(() => quote({ tracks: [added] }, source));
+  }
+  assert.equal(newTrack(DEFAULT_PROJECT, "missing", catalog), null);
+  const invalid: Catalog = {
+    ...catalog,
+    tracks: [{ ...catalog.tracks[0], layoutIds: ["missing"] }],
+  };
+  assert.equal(newTrack(DEFAULT_PROJECT, invalid.tracks[0].id, invalid), null);
+  assert.deepEqual(createDefaultProject(invalid).tracks, []);
 });
