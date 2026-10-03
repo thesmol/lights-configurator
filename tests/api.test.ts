@@ -89,3 +89,32 @@ test("REST API paginates a large injected catalog and calculates authoritative p
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("malformed request URLs return 400 without stopping the server", async () => {
+  const server = http.createServer(createHandler());
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  try {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      http
+        .get(
+          { hostname: "127.0.0.1", port: address.port, path: "//[" },
+          (response) => {
+            response.resume();
+            response.on("end", () => resolve(response.statusCode));
+          },
+        )
+        .on("error", reject);
+    });
+    assert.equal(status, 400);
+    assert.equal(
+      (await fetch(`http://127.0.0.1:${address.port}/api/health`)).status,
+      200,
+    );
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

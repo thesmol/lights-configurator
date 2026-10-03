@@ -52,7 +52,12 @@ export function createHandler(
   dist = resolve(process.cwd(), "dist"),
 ) {
   return async (req: IncomingMessage, res: ServerResponse) => {
-    const url = new URL(req.url ?? "/", "http://localhost");
+    let url: URL;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      return json(res, 400, { error: "Некорректный URL" });
+    }
     const path = url.pathname;
     if (path.startsWith("/api/")) {
       try {
